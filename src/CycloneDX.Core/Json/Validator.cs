@@ -206,6 +206,44 @@ namespace CycloneDX.Json
         }
 
         /// <summary>
+        /// Merge two dictionaries whose values are lists of JsonElements,
+        /// adding all entries from list in dict2 for the same key as in
+        /// dict1 (or adds a new entry with a full list for a new key).
+        /// Passes dictionaries by reference, so manipulates dict1 directly
+        /// and does not return a value.
+        /// </summary>
+        /// <param name="dict1">Dict with lists as values</param>
+        /// <param name="dict2">Dict with lists as values</param>
+        private static void addDictListFirst(
+            ref Dictionary<string, List<JsonElement>> dict1,
+            ref Dictionary<string, List<JsonElement>> dict2)
+        {
+            if (dict2 == null || dict2.Count == 0)
+            {
+                return;
+            }
+
+            if (dict1 == null || dict1.Count == 0)
+            {
+                dict1 = dict2;
+                return;
+            }
+
+            foreach (KeyValuePair<string, List<JsonElement>> KVP in dict2)
+            {
+                if (dict1.ContainsKey(KVP.Key))
+                {
+                    // NOTE: Possibly different object, but same string representation!
+                    dict1[KVP.Key].AddRange(KVP.Value);
+                }
+                else
+                {
+                    dict1.Add(KVP.Key, KVP.Value);
+                }
+            }
+        }
+
+        /// <summary>
         /// Iterate through the JSON document to find JSON objects whose property names
         /// match the one we seek, and add such hits to returned list. Recurse and repeat.
         /// </summary>
@@ -239,7 +277,8 @@ namespace CycloneDX.Json
                         // Note: Here we can recurse into same property that
                         // we've just listed, if it is not of a simple kind.
                         nestedHits = findNamedElements(property.Value, name);
-                        hits = addDictList(hits, nestedHits);
+                        addDictListFirst(ref hits, ref nestedHits);
+                        //hits = addDictList(hits, nestedHits);
                     }
                     break;
 
@@ -247,7 +286,8 @@ namespace CycloneDX.Json
                     foreach (JsonElement nestedElem in element.EnumerateArray())
                     {
                         nestedHits = findNamedElements(nestedElem, name);
-                        hits = addDictList(hits, nestedHits);
+                        addDictListFirst(ref hits, ref nestedHits);
+                        //hits = addDictList(hits, nestedHits);
                     }
                     break;
 
