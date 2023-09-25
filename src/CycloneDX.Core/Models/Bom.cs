@@ -344,9 +344,21 @@ namespace CycloneDX.Models
                     continue;
                 }
 
+                Type propType = propInfo.PropertyType;
+
                 object propVal = null;
                 try
                 {
+                    if (propInfo.Name.StartsWith("NonNullable")) {
+                        // It is a getter/setter-wrapped facade
+                        // of a Nullable<T> for some T - skip,
+                        // we would inspect the raw item instead
+                        // (factual nulls cause an exception and
+                        // try/catch overhead here).
+                        // FIXME: Is there an attribute for this,
+                        // to avoid a string comparison in a loop?
+                        continue;
+                    }
                     propVal = propInfo.GetValue(obj, null);
                 }
                 catch (TargetInvocationException)
@@ -362,8 +374,6 @@ namespace CycloneDX.Models
                 {
                     continue;
                 }
-
-                Type propType = propInfo.PropertyType;
 
                 // If the type of current "obj" contains a "bom-ref", or
                 // has annotations like [JsonPropertyName("bom-ref")] and
