@@ -321,16 +321,21 @@ namespace CycloneDX.Models
         ///    BomEntities which have a BomRef attribute.</param>
         private void SerializeBomEntity_BomRefs(BomEntity obj, BomEntity container, ref Dictionary<BomEntity, List<BomEntity>> dict)
         {
-            Type type = obj.GetType();
-
-            // Sanity-check: we do not recurse into non-BomEntity types.
-            // Hopefully the compiler or runtime would not have let other obj's in...
-            if (type is null || (!(typeof(BomEntity).IsAssignableFrom(type))))
+            if (obj is null)
             {
                 return;
             }
 
-            foreach (PropertyInfo propInfo in type.GetProperties(BindingFlags.GetProperty | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
+            Type objType = obj.GetType();
+
+            // Sanity-check: we do not recurse into non-BomEntity types.
+            // Hopefully the compiler or runtime would not have let other obj's in...
+            if (objType is null || (!(typeof(BomEntity).IsAssignableFrom(objType))))
+            {
+                return;
+            }
+
+            foreach (PropertyInfo propInfo in objType.GetProperties(BindingFlags.GetProperty | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
             {
                 // We do not recurse into non-BomEntity types
                 if (propInfo is null)
