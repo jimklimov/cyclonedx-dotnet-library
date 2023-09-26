@@ -788,7 +788,6 @@ namespace CycloneDX.Models
                 {
                     sbeCountPropInfo_EvalIsNotBomref++;
                 }
-/**/
                 if (!propIsBomRef)
                 {
                     sbeCountPropInfo_EvalXMLAttr++;
@@ -811,7 +810,7 @@ namespace CycloneDX.Models
                     }
                     stopWatchEvalAttr.Stop();
                 }
-/**/
+
                 if (propIsBomRef)
                 {
                     // Save current object into tracking, and be done with this prop!
