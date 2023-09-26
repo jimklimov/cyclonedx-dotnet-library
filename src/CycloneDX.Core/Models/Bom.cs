@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
@@ -309,177 +310,21 @@ namespace CycloneDX.Models
         }
 
         /// <summary>
-        /// Helper for Bom.GetBomRefsInContainers().
+        /// Prepare a BomWalkResult discovery report starting from
+        /// this Bom document. Callers can cache it to re-use for
+        /// repetitive operations.
         /// </summary>
-        /// <param name="obj">A BomEntity instance currently being investigated</param>
-        /// <param name="container">A BomEntity instance whose attribute
-        ///    (or member of a List<> attribute) is currently being
-        ///    investigated. May be null when starting iteration
-        ///    from this.GetBomRefsInContainers() method.</param>
-        /// <param name="dict">Keys are "container" BomEntities,
-        ///    and values are the lists of "directly contained"
-        ///    BomEntities which have a BomRef attribute.</param>
-        private void SerializeBomEntity_BomRefs(BomEntity obj, BomEntity container, ref Dictionary<BomEntity, List<BomEntity>> dict)
+        /// <returns></returns>
+        public BomWalkResult WalkThis()
         {
-            if (obj is null)
-            {
-                return;
-            }
+            BomWalkResult res = new BomWalkResult();
+            res.reset(this);
 
-            Type objType = obj.GetType();
+            // Note: passing "container=null" should be safe here, as
+            // long as this Bom type does not have a BomRef property.
+            res.SerializeBomEntity_BomRefs(this, null);
 
-            // Sanity-check: we do not recurse into non-BomEntity types.
-            // Hopefully the compiler or runtime would not have let other obj's in...
-            if (objType is null || (!(typeof(BomEntity).IsAssignableFrom(objType))))
-            {
-                return;
-            }
-
-            // TODO: Prepare a similar cache with only a subset of
-            // properties of interest for bom-ref search, to avoid
-            // looking into known dead ends in a loop.
-            PropertyInfo[] objProperties = BomEntity.KnownEntityTypeProperties[objType];
-            if (objProperties.Length < 1)
-            {
-                objProperties = objType.GetProperties(BindingFlags.GetProperty | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-            }
-            foreach (PropertyInfo propInfo in objProperties)
-            {
-                // We do not recurse into non-BomEntity types
-                if (propInfo is null)
-                {
-                    // Is this expected? Maybe throw?
-                    continue;
-                }
-
-                Type propType = propInfo.PropertyType;
-
-                if (propInfo.Name.StartsWith("NonNullable")) {
-                    // It is a getter/setter-wrapped facade
-                    // of a Nullable<T> for some T - skip,
-                    // we would inspect the raw item instead
-                    // (factual nulls would cause an exception
-                    // and require a try/catch overhead here).
-                    // FIXME: Is there an attribute for this,
-                    // to avoid a string comparison in a loop?
-                    continue;
-                }
-                var propVal = propInfo.GetValue(obj, null);
-
-                if (propVal is null)
-                {
-                    continue;
-                }
-
-                // If the type of current "obj" contains a "bom-ref", or
-                // has annotations like [JsonPropertyName("bom-ref")] and
-                // [XmlAttribute("bom-ref")], save it into the dictionary.
-
-                // TODO: Pedantically it would be better to either parse
-                // and consult corresponding CycloneDX spec, somehow, for
-                // properties which have needed schema-defined type (see
-                // detailed comments in GetBomRefsInContainers() method).
-                bool propIsBomRef = (propType.GetTypeInfo().IsAssignableFrom(typeof(string)) && propInfo.Name == "BomRef");
-                if (!propIsBomRef)
-                {
-                    object[] attrs = propInfo.GetCustomAttributes(typeof(XmlAttribute), false);
-                    if (attrs.Length > 0)
-                    {
-                        propIsBomRef = (Array.Find(attrs, x => ((XmlAttribute)x).Name == "bom-ref") != null);
-                    }
-                }
-                if (!propIsBomRef)
-                {
-                    object[] attrs = propInfo.GetCustomAttributes(typeof(JsonPropertyNameAttribute), false);
-                    if (attrs.Length > 0)
-                    {
-                        propIsBomRef = (Array.Find(attrs, x => ((JsonPropertyNameAttribute)x).Name == "bom-ref") != null);
-                    }
-                }
-                if (propIsBomRef)
-                {
-                    if (!(dict.ContainsKey(container)))
-                    {
-                        dict[container] = new List<BomEntity>();
-                    }
-
-                    dict[container].Add((BomEntity)obj);
-
-                    // Done with this string property, look at next
-                    continue;
-                }
-
-                // We do not recurse into non-BomEntity types
-                bool propIsListBomEntity = (
-                    (propType.GetTypeInfo().ImplementedInterfaces.Contains(typeof(System.Collections.IList)))
-                    && (Array.Find(propType.GetTypeInfo().GenericTypeArguments,
-                        x => typeof(BomEntity).GetTypeInfo().IsAssignableFrom(x.GetTypeInfo())) != null)
-                );
-
-                if (!(
-                    propIsListBomEntity
-                    || (typeof(BomEntity).GetTypeInfo().IsAssignableFrom(propType.GetTypeInfo()))
-                ))
-                {
-                    // Not a BomEntity or (potentially) a List of those
-                    continue;
-                }
-
-                if (propIsListBomEntity)
-                {
-                    // Use cached info where available
-                    PropertyInfo listPropCount = null;
-                    MethodInfo listMethodGetItem = null;
-                    MethodInfo listMethodAdd = null;
-                    if (BomEntity.KnownEntityTypeLists.TryGetValue(propType, out BomEntityListReflection refInfo))
-                    {
-                        listPropCount = refInfo.propCount;
-                        listMethodGetItem = refInfo.methodGetItem;
-                        listMethodAdd = refInfo.methodAdd;
-                    }
-                    else
-                    {
-                        // No cached info about BomEntityListReflection[{propType}
-                        listPropCount = propType.GetProperty("Count");
-                        listMethodGetItem = propType.GetMethod("get_Item");
-                        listMethodAdd = propType.GetMethod("Add");
-                    }
-
-                    if (listMethodGetItem == null || listPropCount == null || listMethodAdd == null)
-                    {
-                        // Should not have happened, but...
-                        continue;
-                    }
-
-                    int propValCount = (int)listPropCount.GetValue(propVal, null);
-                    if (propValCount < 1)
-                    {
-                        // Empty list
-                        continue;
-                    }
-
-                    for (int o = 0; o < propValCount; o++)
-                    {
-                        var listVal = listMethodGetItem.Invoke(propVal, new object[] { o });
-                        if (listVal is null)
-                        {
-                            continue;
-                        }
-
-                        if (!(listVal is BomEntity))
-                        {
-                            break;
-                        }
-
-                        SerializeBomEntity_BomRefs((BomEntity)listVal, obj, ref dict);
-                    }
-
-                    // End of list, or a break per above
-                    continue;
-                }
-
-                SerializeBomEntity_BomRefs((BomEntity)propVal, obj, ref dict);
-            }
+            return res;
         }
 
         /// <summary>
@@ -501,10 +346,264 @@ namespace CycloneDX.Models
         /// See also: GetBomRefsWithContainer() with transposed returns.
         /// </summary>
         /// <returns></returns>
+        public Dictionary<BomEntity, List<BomEntity>> GetBomRefsInContainers(BomWalkResult res)
+        {
+            if (res.bomRoot != this)
+            {
+                // throw?
+                return null;
+            }
+            return res.dictRefsInContainers;
+        }
+
+        /// <summary>
+        /// This is a run-once method to get a dictionary.
+        /// See GetBomRefsInContainers(BomWalkResult) for one using a cache
+        /// prepared by WalkThis() for mass manipulations.
+        /// </summary>
+        /// <returns></returns>
         public Dictionary<BomEntity, List<BomEntity>> GetBomRefsInContainers()
         {
-            Dictionary<BomEntity, List<BomEntity>> dict = new Dictionary<BomEntity, List<BomEntity>>();
+            BomWalkResult res = WalkThis();
+            return GetBomRefsInContainers(res);
+        }
 
+        /// <summary>
+        /// Provide a Dictionary whose keys are "contained" entities
+        /// with a BomRef attribute and values are their direct
+        /// container BomEntities, e.g. each Bom.Components[] list
+        /// entry referring the Bom itself; or the Metadata.Component
+        /// entry referring the Metadata; or further "structural"
+        /// components in certain Component or Tool entities.
+        ///
+        /// The assumption per CycloneDX spec, not directly challenged
+        /// in this method, is that each such listed "contained entity"
+        /// (likely Component instances) has an unique BomRef value across
+        /// the whole single Bom document. Other Bom documents may however
+        /// have the same BomRef value (trivially "1", "2", ...) which
+        /// is attached to description of an unrelated entity. This can
+        /// impact such operations as a FlatMerge() of different Boms.
+        ///
+        /// See also: GetBomRefsInContainers() with transposed returns.
+        /// </summary>
+        /// <returns></returns>
+        public Dictionary<BomEntity, BomEntity> GetBomRefsWithContainer(BomWalkResult res)
+        {
+            if (res.bomRoot != this)
+            {
+                // throw?
+                return null;
+            }
+            return res.GetBomRefsWithContainer();
+        }
+
+        /// <summary>
+        /// This is a run-once method to get a dictionary.
+        /// See GetBomRefsWithContainer(BomWalkResult) for one using a cache
+        /// prepared by WalkThis() for mass manipulations.
+        /// </summary>
+        /// <returns></returns>
+        public Dictionary<BomEntity, BomEntity> GetBomRefsWithContainer()
+        {
+            BomWalkResult res = WalkThis();
+            return res.GetBomRefsWithContainer();
+        }
+
+        /// <summary>
+        /// Rename all occurrences of the "BomRef" (its value definition
+        /// to name an entity, if present in this Bom document, and the
+        /// references to it from other entities).
+        ///
+        /// This version of the method considers a cache of information
+        /// about current BomEntity relationships in this document, as
+        /// prepared by an earlier call to GetBomRefsWithContainer() and
+        /// cached by caller (may speed up the loops in case of massive
+        /// processing).
+        /// </summary>
+        /// <param name="oldRef">Old value of BomRef</param>
+        /// <param name="newRef">New value of BomRef</param>
+        /// <param name="dict">Cached output of earlier GetBomRefsWithContainer();
+        ///     contents of the cache can change due to successful renaming
+        ///     to keep reflecting BomEntity relations in this document.
+        /// </param>
+        /// <returns>
+        ///     False if had no hits, had collisions, etc.;
+        ///     True if renamed something without any errors.
+        ///
+        ///     TODO: throw Exceptions instead of False,
+        ///     to help callers discern the error cases?
+        /// </returns>
+        public bool RenameBomRef(string oldRef, string newRef, BomWalkResult res)
+        {
+            return false;
+        }
+
+        /// <summary>
+        /// See related method
+        ///     RenameBomRef(string oldRef, string newRef, Dictionary<BomEntity, BomEntity> dict)
+        /// for details.
+        ///
+        /// This version of the method prepares and discards the helper
+        /// dictionary with mapping of cross-referencing entities, and
+        /// is easier to use in code for single-use cases but is less
+        /// efficient for massive processing loops.
+        /// </summary>
+        /// <param name="oldRef">Old value of BomRef</param>
+        /// <param name="newRef">New value of BomRef</param>
+        /// <returns>False if had no hits; True if renamed something without any errors</returns>
+        public bool RenameBomRef(string oldRef, string newRef)
+        {
+            BomWalkResult res = WalkThis();
+            return this.RenameBomRef(oldRef, newRef, res);
+        }
+    }
+    /// <summary>
+    /// Helper class for Bom.GetBomRefsInContainers() et al discovery tracking.
+    /// </summary>
+    public class BomWalkResult
+    {
+        /// <summary>
+        /// The BomEntity (normally a whole Bom document)
+        /// which was walked and reported here.
+        /// </summary>
+        public BomEntity bomRoot = null;
+
+        /// <summary>
+        /// Populated by GetBomRefsInContainers(),
+        /// keys are "container" entities and values
+        /// are lists of "contained" entities which
+        /// have a BomRef or equivalent property.
+        /// </summary>
+        readonly public Dictionary<BomEntity, List<BomEntity>> dictRefsInContainers = new Dictionary<BomEntity, List<BomEntity>>();
+
+        /// <summary>
+        /// Populated by GetBomRefsInContainers(),
+        /// keys are "Ref" or equivalent string values
+        /// which link back to a "BomRef" hopefully
+        /// defined somewhere in the same Bom document
+        /// (but may be dangling, or sometimes co-opted
+        /// with external links to other Bom documents!),
+        /// and values are lists of entities which use
+        /// this same "ref" value.
+        /// </summary>
+        readonly public Dictionary<String, List<BomEntity>> dictBackrefs = new Dictionary<String, List<BomEntity>>();
+
+        // Helpers for performance accounting - how hard
+        // was it to discover the information in this
+        // BomWalkResult object?
+        private int sbeCountMethodEnter { get; set; }
+        private int sbeCountMethodQuickExit { get; set; }
+        private int sbeCountPropInfoEnter { get; set; }
+        private int sbeCountPropInfoQuickExit { get; set; }
+        private int sbeCountPropInfoQuickExit2 { get; set; }
+        private int sbeCountPropInfo { get; set; }
+        private int sbeCountPropInfo_EvalIsBomref { get; set; }
+        private int sbeCountPropInfo_EvalIsNotBomref { get; set; }
+        private int sbeCountPropInfo_EvalXMLAttr { get; set; }
+        private int sbeCountPropInfo_EvalJSONAttr { get; set; }
+        private int sbeCountPropInfo_EvalList { get; set; }
+        private int sbeCountPropInfo_EvalListQuickExit { get; set; }
+        private int sbeCountPropInfo_EvalListWalk { get; set; }
+        private int sbeCountNewBomRef { get; set; }
+
+        // This one is null, outermost loop makes a new instance, starts and stops it:
+        private Stopwatch stopWatchWalkTotal = null;
+        private Stopwatch stopWatchEvalAttr = new Stopwatch();
+        private Stopwatch stopWatchNewBomref = new Stopwatch();
+        private Stopwatch stopWatchNewBomrefCheck = new Stopwatch();
+        private Stopwatch stopWatchNewBomrefNewList = new Stopwatch();
+        private Stopwatch stopWatchNewBomrefListAdd = new Stopwatch();
+        private Stopwatch stopWatchGetValue = new Stopwatch();
+
+        public void reset()
+        {
+            dictRefsInContainers.Clear();
+            dictBackrefs.Clear();
+
+            sbeCountMethodEnter = 0;
+            sbeCountMethodQuickExit = 0;
+            sbeCountPropInfoEnter = 0;
+            sbeCountPropInfoQuickExit = 0;
+            sbeCountPropInfoQuickExit2 = 0;
+            sbeCountPropInfo = 0;
+            sbeCountPropInfo_EvalIsBomref = 0;
+            sbeCountPropInfo_EvalIsNotBomref = 0;
+            sbeCountPropInfo_EvalXMLAttr = 0;
+            sbeCountPropInfo_EvalJSONAttr = 0;
+            sbeCountPropInfo_EvalList = 0;
+            sbeCountPropInfo_EvalListQuickExit = 0;
+            sbeCountPropInfo_EvalListWalk = 0;
+            sbeCountNewBomRef = 0;
+
+            bomRoot = null;
+            stopWatchWalkTotal = null;
+            stopWatchEvalAttr = new Stopwatch();
+            stopWatchNewBomref = new Stopwatch();
+            stopWatchNewBomrefCheck = new Stopwatch();
+            stopWatchNewBomrefNewList = new Stopwatch();
+            stopWatchNewBomrefListAdd = new Stopwatch();
+            stopWatchGetValue = new Stopwatch();
+        }
+
+        public void reset(BomEntity newRoot)
+        {
+            this.reset();
+            this.bomRoot = newRoot;
+        }
+
+        private static string StopWatchToString(Stopwatch stopwatch)
+        {
+            string elapsed = "N/A";
+            if (stopwatch != null)
+            {
+                // Get the elapsed time as a TimeSpan value.
+                TimeSpan ts = stopwatch.Elapsed;
+                elapsed = String.Format("{0:00}:{1:00}:{2:00}.{3:00}",
+                    ts.Hours, ts.Minutes, ts.Seconds,
+                    ts.Milliseconds / 10);
+            }
+            return elapsed;
+        }
+
+        public override string ToString()
+        {
+            return "BomWalkResult: " +
+                $"Timing.WalkTotal={StopWatchToString(stopWatchWalkTotal)} " +
+                $"sbeCountMethodEnter={sbeCountMethodEnter} " +
+                $"sbeCountMethodQuickExit={sbeCountMethodQuickExit} " +
+                $"sbeCountPropInfoEnter={sbeCountPropInfoEnter} " +
+                $"sbeCountPropInfoQuickExit={sbeCountPropInfoQuickExit} " +
+                $"Timing.GetValue={StopWatchToString(stopWatchGetValue)} " +
+                $"sbeCountPropInfo_EvalIsBomref={sbeCountPropInfo_EvalIsBomref} " +
+                $"sbeCountPropInfo_EvalIsNotBomref={sbeCountPropInfo_EvalIsNotBomref} " +
+                $"Timing.EvalAttr={StopWatchToString(stopWatchEvalAttr)} " +
+                $"sbeCountPropInfo_EvalXMLAttr={sbeCountPropInfo_EvalXMLAttr} " +
+                $"sbeCountPropInfo_EvalJSONAttr={sbeCountPropInfo_EvalJSONAttr} " +
+                $"Timing.NewBomRef={StopWatchToString(stopWatchNewBomref)} (" +
+                $"Timing.NewBomRefCheck={StopWatchToString(stopWatchNewBomrefCheck)} " +
+                $"Timing.NewBomRefNewList={StopWatchToString(stopWatchNewBomrefNewList)} " +
+                $"Timing.NewBomRefListAdd={StopWatchToString(stopWatchNewBomrefListAdd)}) " +
+                $"sbeCountNewBomRef={sbeCountNewBomRef} " +
+                $"sbeCountPropInfo_EvalList={sbeCountPropInfo_EvalList} " +
+                $"sbeCountPropInfoQuickExit2={sbeCountPropInfoQuickExit2} " +
+                $"sbeCountPropInfo_EvalListQuickExit={sbeCountPropInfo_EvalListQuickExit} " +
+                $"sbeCountPropInfo_EvalListWalk={sbeCountPropInfo_EvalListWalk} " +
+                $"sbeCountPropInfo={sbeCountPropInfo} " +
+                $"dictRefsInContainers.Count={dictRefsInContainers.Count} " +
+                $"dictBackrefs.Count={dictBackrefs.Count}";
+        }
+
+        /// <summary>
+        /// Helper for Bom.GetBomRefsInContainers().
+        /// </summary>
+        /// <param name="obj">A BomEntity instance currently being investigated</param>
+        /// <param name="container">A BomEntity instance whose attribute
+        ///    (or member of a List<> attribute) is currently being
+        ///    investigated. May be null when starting iteration
+        ///    from this.GetBomRefsInContainers() method.
+        /// </param>
+        public void SerializeBomEntity_BomRefs(BomEntity obj, BomEntity container)
+        {
             // With CycloneDX spec 1.4 or older it might be feasible to
             // walk specific properties of the Bom instance to look into
             // their contents by known class types. As seen by excerpt
@@ -513,10 +612,6 @@ namespace CycloneDX.Models
             // such value can be used to refer back to that entity, such
             // approach is nearly infeasible starting with CDX 1.5 -- so
             // use of reflection below is a more sustainable choice.
-
-            // Note: passing "container=null" should be safe here, as
-            // long as this Bom type does not have a BomRef property.
-            SerializeBomEntity_BomRefs(this, null, ref dict);
 
             // TL:DR further details:
             //
@@ -598,8 +693,244 @@ namespace CycloneDX.Models
             // The CDX spec 1.5 also introduces "annotation" which can refer to
             // such bom-ref carriers as service, component, organizationalEntity,
             // organizationalContact.
+            sbeCountMethodEnter++;
 
-            return dict;
+            if (obj is null)
+            {
+                sbeCountMethodQuickExit++;
+                return;
+            }
+
+            Type objType = obj.GetType();
+
+            // Sanity-check: we do not recurse into non-BomEntity types.
+            // Hopefully the compiler or runtime would not have let other obj's in...
+            if (objType is null || (!(typeof(BomEntity).IsAssignableFrom(objType))))
+            {
+                sbeCountMethodQuickExit++;
+                return;
+            }
+
+            bool isTimeAccounter = (stopWatchWalkTotal is null);
+            if (isTimeAccounter)
+            {
+                stopWatchWalkTotal = new Stopwatch();
+                stopWatchWalkTotal.Start();
+            }
+
+            // TODO: Prepare a similar cache with only a subset of
+            // properties of interest for bom-ref search, to avoid
+            // looking into known dead ends in a loop.
+            PropertyInfo[] objProperties = BomEntity.KnownEntityTypeProperties[objType];
+            if (objProperties.Length < 1)
+            {
+                objProperties = objType.GetProperties(BindingFlags.GetProperty | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            }
+            foreach (PropertyInfo propInfo in objProperties)
+            {
+                sbeCountPropInfoEnter++;
+
+                // We do not recurse into non-BomEntity types
+                if (propInfo is null)
+                {
+                    // Is this expected? Maybe throw?
+                    sbeCountPropInfoQuickExit++;
+                    continue;
+                }
+
+                Type propType = propInfo.PropertyType;
+                stopWatchGetValue.Start();
+                if (propInfo.Name.StartsWith("NonNullable")) {
+                    // It is a getter/setter-wrapped facade
+                    // of a Nullable<T> for some T - skip,
+                    // we would inspect the raw item instead
+                    // (factual nulls would cause an exception
+                    // and require a try/catch overhead here).
+                    // FIXME: Is there an attribute for this,
+                    // to avoid a string comparison in a loop?
+                    sbeCountPropInfoQuickExit++;
+                    stopWatchGetValue.Stop();
+                    continue;
+                }
+                var propVal = propInfo.GetValue(obj, null);
+                stopWatchGetValue.Stop();
+
+                if (propVal is null)
+                {
+                    sbeCountPropInfoQuickExit++;
+                    continue;
+                }
+
+                // If the type of current "obj" contains a "bom-ref", or
+                // has annotations like [JsonPropertyName("bom-ref")] and
+                // [XmlAttribute("bom-ref")], save it into the dictionary.
+
+                // TODO: Pedantically it would be better to either parse
+                // and consult corresponding CycloneDX spec, somehow, for
+                // properties which have needed schema-defined type (see
+                // detailed comments in GetBomRefsInContainers() method).
+                sbeCountPropInfo_EvalIsBomref++;
+                bool propIsBomRef = (propType.GetTypeInfo().IsAssignableFrom(typeof(string)) && propInfo.Name == "BomRef");
+                if (!propIsBomRef)
+                {
+                    sbeCountPropInfo_EvalIsNotBomref++;
+                }
+/**/
+                if (!propIsBomRef)
+                {
+                    sbeCountPropInfo_EvalXMLAttr++;
+                    stopWatchEvalAttr.Start();
+                    object[] attrs = propInfo.GetCustomAttributes(typeof(XmlAttribute), false);
+                    if (attrs.Length > 0)
+                    {
+                        propIsBomRef = (Array.Find(attrs, x => ((XmlAttribute)x).Name == "bom-ref") != null);
+                    }
+                    stopWatchEvalAttr.Stop();
+                }
+                if (!propIsBomRef)
+                {
+                    sbeCountPropInfo_EvalJSONAttr++;
+                    stopWatchEvalAttr.Start();
+                    object[] attrs = propInfo.GetCustomAttributes(typeof(JsonPropertyNameAttribute), false);
+                    if (attrs.Length > 0)
+                    {
+                        propIsBomRef = (Array.Find(attrs, x => ((JsonPropertyNameAttribute)x).Name == "bom-ref") != null);
+                    }
+                    stopWatchEvalAttr.Stop();
+                }
+/**/
+                if (propIsBomRef)
+                {
+                    stopWatchNewBomref.Start();
+                    stopWatchNewBomrefCheck.Start();
+                    if (!(dictRefsInContainers.ContainsKey(container)))
+                    {
+                        stopWatchNewBomrefCheck.Stop();
+                        stopWatchNewBomrefNewList.Start();
+                        dictRefsInContainers[container] = new List<BomEntity>();
+                        stopWatchNewBomrefNewList.Stop();
+                    }
+                    else
+                    {
+                        stopWatchNewBomrefCheck.Stop();
+                    }
+
+                    sbeCountNewBomRef++;
+                    stopWatchNewBomrefListAdd.Start();
+                    dictRefsInContainers[container].Add((BomEntity)obj);
+                    stopWatchNewBomrefListAdd.Stop();
+                    stopWatchNewBomref.Stop();
+
+                    // Done with this string property, look at next
+                    continue;
+                }
+
+                // We do not recurse into non-BomEntity types
+                sbeCountPropInfo_EvalList++;
+                bool propIsListBomEntity = (
+                    (propType.GetTypeInfo().ImplementedInterfaces.Contains(typeof(System.Collections.IList)))
+                    && (Array.Find(propType.GetTypeInfo().GenericTypeArguments,
+                        x => typeof(BomEntity).GetTypeInfo().IsAssignableFrom(x.GetTypeInfo())) != null)
+                );
+
+                if (!(
+                    propIsListBomEntity
+                    || (typeof(BomEntity).GetTypeInfo().IsAssignableFrom(propType.GetTypeInfo()))
+                ))
+                {
+                    // Not a BomEntity or (potentially) a List of those
+                    sbeCountPropInfoQuickExit2++;
+                    continue;
+                }
+
+                if (propIsListBomEntity)
+                {
+                    // Use cached info where available
+                    PropertyInfo listPropCount = null;
+                    MethodInfo listMethodGetItem = null;
+                    MethodInfo listMethodAdd = null;
+                    if (BomEntity.KnownEntityTypeLists.TryGetValue(propType, out BomEntityListReflection refInfo))
+                    {
+                        listPropCount = refInfo.propCount;
+                        listMethodGetItem = refInfo.methodGetItem;
+                        listMethodAdd = refInfo.methodAdd;
+                    }
+                    else
+                    {
+                        // No cached info about BomEntityListReflection[{propType}
+                        listPropCount = propType.GetProperty("Count");
+                        listMethodGetItem = propType.GetMethod("get_Item");
+                        listMethodAdd = propType.GetMethod("Add");
+                    }
+
+                    if (listMethodGetItem == null || listPropCount == null || listMethodAdd == null)
+                    {
+                        // Should not have happened, but...
+                        sbeCountPropInfo_EvalListQuickExit++;
+                        continue;
+                    }
+
+                    int propValCount = (int)listPropCount.GetValue(propVal, null);
+                    if (propValCount < 1)
+                    {
+                        // Empty list
+                        sbeCountPropInfo_EvalListQuickExit++;
+                        continue;
+                    }
+
+                    sbeCountPropInfo_EvalListWalk++;
+                    for (int o = 0; o < propValCount; o++)
+                    {
+                        var listVal = listMethodGetItem.Invoke(propVal, new object[] { o });
+                        if (listVal is null)
+                        {
+                            continue;
+                        }
+
+                        if (!(listVal is BomEntity))
+                        {
+                            break;
+                        }
+
+                        SerializeBomEntity_BomRefs((BomEntity)listVal, obj);
+                    }
+
+                    // End of list, or a break per above
+                    continue;
+                }
+
+                sbeCountPropInfo++;
+                SerializeBomEntity_BomRefs((BomEntity)propVal, obj);
+            }
+
+            if (isTimeAccounter)
+            {
+                stopWatchWalkTotal.Stop();
+            }
+        }
+
+        /// <summary>
+        /// Provide a Dictionary whose keys are container BomEntities
+        /// and values are lists of one or more directly contained
+        /// entities with a BomRef attribute, e.g. the Bom itself and
+        /// the Components in it; or the Metadata and the Component
+        /// description in it; or certain Components or Tools with a
+        /// set of further "structural" components.
+        ///
+        /// The assumption per CycloneDX spec, not directly challenged
+        /// in this method, is that each such listed "contained entity"
+        /// (likely Component instances) has an unique BomRef value across
+        /// the whole single Bom document. Other Bom documents may however
+        /// have the same BomRef value (trivially "1", "2", ...) which
+        /// is attached to description of an unrelated entity. This can
+        /// impact such operations as a FlatMerge() of different Boms.
+        ///
+        /// See also: GetBomRefsWithContainer() with transposed returns.
+        /// </summary>
+        /// <returns></returns>
+        public Dictionary<BomEntity, List<BomEntity>> GetBomRefsInContainers()
+        {
+            return dictRefsInContainers;
         }
 
         /// <summary>
@@ -623,10 +954,9 @@ namespace CycloneDX.Models
         /// <returns></returns>
         public Dictionary<BomEntity, BomEntity> GetBomRefsWithContainer()
         {
-            Dictionary<BomEntity, List<BomEntity>> dictByC = this.GetBomRefsInContainers();
             Dictionary<BomEntity, BomEntity> dictWithC = new Dictionary<BomEntity, BomEntity>();
 
-            foreach (var (container, listItems) in dictByC)
+            foreach (var (container, listItems) in dictRefsInContainers)
             {
                 if (listItems is null || container is null || listItems.Count < 1) {
                     continue;
@@ -638,53 +968,6 @@ namespace CycloneDX.Models
             }
 
             return dictWithC;
-        }
-
-        /// <summary>
-        /// Rename all occurrences of the "BomRef" (its value definition
-        /// to name an entity, if present in this Bom document, and the
-        /// references to it from other entities).
-        ///
-        /// This version of the method considers a cache of information
-        /// about current BomEntity relationships in this document, as
-        /// prepared by an earlier call to GetBomRefsWithContainer() and
-        /// cached by caller (may speed up the loops in case of massive
-        /// processing).
-        /// </summary>
-        /// <param name="oldRef">Old value of BomRef</param>
-        /// <param name="newRef">New value of BomRef</param>
-        /// <param name="dict">Cached output of earlier GetBomRefsWithContainer();
-        ///     contents of the cache can change due to successful renaming
-        ///     to keep reflecting BomEntity relations in this document.
-        /// </param>
-        /// <returns>
-        ///     False if had no hits, had collisions, etc.;
-        ///     True if renamed something without any errors.
-        ///
-        ///     TODO: throw Exceptions instead of False,
-        ///     to help callers discern the error cases?
-        /// </returns>
-        public bool RenameBomRef(string oldRef, string newRef, Dictionary<BomEntity, BomEntity> dict)
-        {
-            return false;
-        }
-
-        /// <summary>
-        /// See related method
-        ///     RenameBomRef(string oldRef, string newRef, Dictionary<BomEntity, BomEntity> dict)
-        /// for details.
-        ///
-        /// This version of the method prepares and discards the helper
-        /// dictionary with mapping of cross-referencing entities, and
-        /// is easier to use in code for single-use cases but is less
-        /// efficient for massive processing loops.
-        /// </summary>
-        /// <param name="oldRef">Old value of BomRef</param>
-        /// <param name="newRef">New value of BomRef</param>
-        /// <returns>False if had no hits; True if renamed something without any errors</returns>
-        public bool RenameBomRef(string oldRef, string newRef)
-        {
-            return this.RenameBomRef(oldRef, newRef, this.GetBomRefsWithContainer());
         }
     }
 }
