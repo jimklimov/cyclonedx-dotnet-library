@@ -474,19 +474,21 @@ namespace CycloneDX.Models
                 // Here and below: if casting fails and throws...
                 // it is the right thing to do in given situation :)
                 object containedBomRef = null;
+/*
                 if (contained is IBomEntityWithRefType_String_BomRef)
                 {
                     containedBomRef = ((IBomEntityWithRefType_String_BomRef)contained).GetBomRef();
                 }
                 else
                 {
+*/
                     var propInfo = contained.GetType().GetProperty("BomRef", typeof(string));
                     if (propInfo is null)
                     {
                         throw new BomEntityIncompatibleException("No \"string BomRef\" attribute in class: " + contained.GetType().Name);
                     }
                     containedBomRef = propInfo.GetValue(contained);
-                }
+//                }
 
                 if (containedBomRef.ToString() == oldRef)
                 {
@@ -536,30 +538,34 @@ namespace CycloneDX.Models
                 {
                     object currentRef = null;
                     PropertyInfo propInfo = null;
+/*
                     if (namedObject is IBomEntityWithRefType_String_BomRef)
                     {
                         currentRef = ((IBomEntityWithRefType_String_BomRef)namedObject).GetBomRef();
                     }
                     else
                     {
+*/
                         propInfo = namedObject.GetType().GetProperty("BomRef", typeof(string));
                         if (propInfo is null)
                         {
                             throw new BomEntityIncompatibleException("No \"string BomRef\" attribute in class: " + namedObject.GetType().Name);
                         }
                         currentRef = propInfo.GetValue(namedObject);
-                    }
+//                    }
 
                     if (currentRef.ToString() == oldRef)
                     {
+/*
                         if (namedObject is IBomEntityWithRefType_String_BomRef)
                         {
                             ((IBomEntityWithRefType_String_BomRef)namedObject).SetBomRef(newRef);
                         }
                         else
                         {
+*/
                             propInfo.SetValue(namedObject, newRef);
-                        }
+//                        }
                     }
                     else
                     {
@@ -886,30 +892,34 @@ namespace CycloneDX.Models
                     {
                         object currentRef = null;
                         PropertyInfo propInfo = null;
+/*
                         if (referrer is IBomEntityWithRefLinkType_String_Ref)
                         {
                             currentRef = ((IBomEntityWithRefLinkType_String_Ref)referrer).GetRef();
                         }
                         else
                         {
+*/
                             propInfo = referrer.GetType().GetProperty("Ref", typeof(string));
                             if (propInfo is null)
                             {
                                 throw new BomEntityIncompatibleException("No \"string Ref\" attribute in class: " + referrer.GetType().Name);
                             }
                             currentRef = propInfo.GetValue(referrer);
-                        }
+//                        }
 
                         if (currentRef.ToString() == oldRef)
                         {
+/*
                             if (referrer is IBomEntityWithRefLinkType_String_Ref)
                             {
                                 ((IBomEntityWithRefLinkType_String_Ref)referrer).SetRef(newRef);
                             }
                             else
                             {
+*/
                                 propInfo.SetValue(referrer, newRef);
-                            }
+//                            }
                             referrerModified++;
                         }
                         else

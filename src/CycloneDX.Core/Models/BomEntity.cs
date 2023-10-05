@@ -463,8 +463,8 @@ namespace CycloneDX.Models
     /// </summary>
     public interface IBomEntityWithRefType_String_BomRef : IBomEntityWithRefType
     {
-        public string GetBomRef();
-        public void SetBomRef(string s);
+        //public default string GetBomRef() { return this.get_BomRef(); }
+        //public void set_BomRef(string s);
     }
 
     /// <summary>
@@ -524,8 +524,8 @@ namespace CycloneDX.Models
     /// </summary>
     public interface IBomEntityWithRefLinkType_String_Ref : IBomEntityWithRefLinkType
     {
-        public string GetRef();
-        public void SetRef(string s);
+        //public string GetRef();
+        //public void SetRef(string s);
     }
 
     /// <summary>
