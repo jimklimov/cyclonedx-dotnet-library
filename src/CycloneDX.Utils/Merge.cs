@@ -116,6 +116,30 @@ namespace CycloneDX.Utils
                 Console.WriteLine($"FLAT-MERGE: {DateTime.Now}: inspecting bom2: got {dict2.Count} BomRefs");
             }
 
+            try {
+                bom2.RenameBomRef("bogus", "123");
+            } catch (Exception ex) {
+                Console.WriteLine(ex.ToString());
+            }
+
+            try {
+                bom2.RenameBomRef("123", "123");
+            } catch (Exception ex) {
+                Console.WriteLine(ex.ToString());
+            }
+
+            try {
+                bom2.RenameBomRef("123", "456");
+            } catch (Exception ex) {
+                Console.WriteLine(ex.ToString());
+            }
+
+            try {
+                bom2.RenameBomRef("pkg:maven/com.provys/patchappl@2.60.25?type=jar", "testname");
+            } catch (Exception ex) {
+                Console.WriteLine(ex.ToString());
+            }
+
             var result = new Bom();
             // Note: we recurse into this method from other FlatMerge() implementations
             // (e.g. mass-merge of a big list of Bom documents), so the resulting
