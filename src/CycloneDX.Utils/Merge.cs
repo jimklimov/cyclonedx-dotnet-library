@@ -79,65 +79,75 @@ namespace CycloneDX.Utils
                 iDebugLevel = 0;
             }
 
-            /* Initial use-case for BomWalkResult discoveries to see how they scale */
-            if (iDebugLevel >= 1)
+            if (listMergeHelperStrategy.renameConflictingComponents)
             {
-                Console.WriteLine($"FLAT-MERGE: {DateTime.Now}: inspecting bom1...");
-            }
-            BomWalkResult bwr1 = bom1.WalkThis();
-            if (iDebugLevel >= 1)
-            {
-                Console.WriteLine($"FLAT-MERGE: {DateTime.Now}: inspecting bom1: got {bwr1}");
-            }
-            Dictionary<BomEntity, List<BomEntity>> dict1ByC = bwr1.GetBomRefsInContainers();
-            if (iDebugLevel >= 1)
-            {
-                Console.WriteLine($"FLAT-MERGE: {DateTime.Now}: inspecting bom1: got {dict1ByC.Count} BomRef-entity containers");
-            }
-            Dictionary<BomEntity, BomEntity> dict1 = bwr1.GetBomRefsWithContainer();
-            if (iDebugLevel >= 1)
-            {
-                Console.WriteLine($"FLAT-MERGE: {DateTime.Now}: inspecting bom1: got {dict1.Count} BomRefs");
-            }
+                // Part of intermediately-quick merging logic;
+                // currently handled in this class since it needs
+                // to see and manipulate the whole Bom document.
+                // It may have some tentacles in Components too.
+                // TODO: Conceal some of those Get*() calls if only
+                // relevant for test/debug runs, to not waste time
+                // in production.
+                if (iDebugLevel >= 2)
+                {
+                    Console.WriteLine($"FLAT-MERGE: {DateTime.Now}: inspecting bom document walks...");
+                }
+                BomWalkResult bwr1 = bom1.WalkThis();
+                if (iDebugLevel >= 3)
+                {
+                    Console.WriteLine($"FLAT-MERGE: {DateTime.Now}: inspecting bom1: got {bwr1}");
+                }
+                Dictionary<BomEntity, List<BomEntity>> dict1ByC = bwr1.GetBomRefsInContainers();
+                if (iDebugLevel >= 4)
+                {
+                    Console.WriteLine($"FLAT-MERGE: {DateTime.Now}: inspecting bom1: got {dict1ByC.Count} BomRef-entity containers");
+                }
+                Dictionary<BomEntity, BomEntity> dict1 = bwr1.GetBomRefsWithContainer();
+                if (iDebugLevel >= 4)
+                {
+                    Console.WriteLine($"FLAT-MERGE: {DateTime.Now}: inspecting bom1: got {dict1.Count} BomRefs");
+                }
 
-            BomWalkResult bwr2 = bom2.WalkThis();
-            if (iDebugLevel >= 1)
-            {
-                Console.WriteLine($"FLAT-MERGE: {DateTime.Now}: inspecting bom2: got {bwr2}");
-            }
-            Dictionary<BomEntity, List<BomEntity>> dict2ByC = bwr2.GetBomRefsInContainers();
-            if (iDebugLevel >= 1)
-            {
-                Console.WriteLine($"FLAT-MERGE: {DateTime.Now}: inspecting bom2: got {dict2ByC.Count} BomRef-entity containers");
-            }
-            Dictionary<BomEntity, BomEntity> dict2 = bwr2.GetBomRefsWithContainer();
-            if (iDebugLevel >= 1)
-            {
-                Console.WriteLine($"FLAT-MERGE: {DateTime.Now}: inspecting bom2: got {dict2.Count} BomRefs");
-            }
+                BomWalkResult bwr2 = bom2.WalkThis();
+                if (iDebugLevel >= 3)
+                {
+                    Console.WriteLine($"FLAT-MERGE: {DateTime.Now}: inspecting bom2: got {bwr2}");
+                }
+                Dictionary<BomEntity, List<BomEntity>> dict2ByC = bwr2.GetBomRefsInContainers();
+                if (iDebugLevel >= 4)
+                {
+                    Console.WriteLine($"FLAT-MERGE: {DateTime.Now}: inspecting bom2: got {dict2ByC.Count} BomRef-entity containers");
+                }
+                Dictionary<BomEntity, BomEntity> dict2 = bwr2.GetBomRefsWithContainer();
+                if (iDebugLevel >= 4)
+                {
+                    Console.WriteLine($"FLAT-MERGE: {DateTime.Now}: inspecting bom2: got {dict2.Count} BomRefs");
+                }
 
-            try {
-                bom2.RenameBomRef("bogus", "123", bwr2);
-            } catch (Exception ex) {
-                Console.WriteLine(ex.ToString());
-            }
+                /* Initial use-case for BomWalkResult discoveries to see how they scale */
+                try {
+                    bom2.RenameBomRef("bogus", "123", bwr2);
+                } catch (Exception ex) {
+                    Console.WriteLine(ex.ToString());
+                }
 
-            try {
-                bom2.RenameBomRef("123", "123", bwr2);
-            } catch (Exception ex) {
-                Console.WriteLine(ex.ToString());
-            }
+                try {
+                    bom2.RenameBomRef("123", "123", bwr2);
+                } catch (Exception ex) {
+                    Console.WriteLine(ex.ToString());
+                }
 
-            try {
-                bom2.RenameBomRef("123", "456", bwr2);
-            } catch (Exception ex) {
-                Console.WriteLine(ex.ToString());
-            }
+                try {
+                    bom2.RenameBomRef("123", "456", bwr2);
+                } catch (Exception ex) {
+                    Console.WriteLine(ex.ToString());
+                }
 
-            try {
-                bom2.RenameBomRef("pkg:maven/com.provys/patchappl@2.60.25?type=jar", "testname", bwr2);
-            } catch (Exception ex) {
-                Console.WriteLine(ex.ToString());
+                try {
+                    bom2.RenameBomRef("pkg:maven/com.provys/patchappl@2.60.25?type=jar", "testname", bwr2);
+                } catch (Exception ex) {
+                    Console.WriteLine(ex.ToString());
+                }
             }
 
             var result = new Bom();
@@ -285,6 +295,7 @@ namespace CycloneDX.Utils
             BomEntityListMergeHelperStrategy safeStrategy = BomEntityListMergeHelperStrategy.Default();
             BomEntityListMergeHelperStrategy quickStrategy = BomEntityListMergeHelperStrategy.Default();
             quickStrategy.useBomEntityMerge = false;
+            quickStrategy.renameConflictingComponents = true;
 
             // Sanity-check: we will do evil things in Components.MergeWith()
             // among others, and hash-code based quick deduplication, which
