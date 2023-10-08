@@ -117,25 +117,25 @@ namespace CycloneDX.Utils
             }
 
             try {
-                bom2.RenameBomRef("bogus", "123");
+                bom2.RenameBomRef("bogus", "123", bwr2);
             } catch (Exception ex) {
                 Console.WriteLine(ex.ToString());
             }
 
             try {
-                bom2.RenameBomRef("123", "123");
+                bom2.RenameBomRef("123", "123", bwr2);
             } catch (Exception ex) {
                 Console.WriteLine(ex.ToString());
             }
 
             try {
-                bom2.RenameBomRef("123", "456");
+                bom2.RenameBomRef("123", "456", bwr2);
             } catch (Exception ex) {
                 Console.WriteLine(ex.ToString());
             }
 
             try {
-                bom2.RenameBomRef("pkg:maven/com.provys/patchappl@2.60.25?type=jar", "testname");
+                bom2.RenameBomRef("pkg:maven/com.provys/patchappl@2.60.25?type=jar", "testname", bwr2);
             } catch (Exception ex) {
                 Console.WriteLine(ex.ToString());
             }
