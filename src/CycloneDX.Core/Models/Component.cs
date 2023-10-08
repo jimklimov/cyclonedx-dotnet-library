@@ -271,12 +271,12 @@ namespace CycloneDX.Models
         public static void NormalizeList(bool ascending, bool recursive, List<Component> list)
         {
             var sortHelper = new ListMergeHelper<Component>();
-            // TODO: With BomRef not necessarily coherent between docs
+            // NOTE: With BomRef not necessarily coherent between docs
             // (e.g. "1", "2", "3" are valid and not tied to the entity),
-            // aren't the other attributes the better values to have the
-            // higher-priority sorting order?
+            // the other attributes are the better values to dictate the
+            // higher-priority sorting order!
             sortHelper.SortByImpl(ascending, recursive, list,
-                o => (o?.BomRef, o?.Type, o?.Group, o?.Name, o?.Version),
+                o => (o?.Group, o?.Name, o?.Version, o?.Type, o?.BomRef),
                 null);
         }
 
