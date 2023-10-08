@@ -578,6 +578,9 @@ namespace CycloneDX.Models
                     // TODO: Add handling for other use-cases (if any appear as we evolve)
                     throw new BomEntityIncompatibleException("Object does not have a \"string BomRef\" property, but was listed as having a \"bom-ref\" identifier: " + oldRef);
                 }
+
+                // No need to rename here anything about the "direct" entries
+                // in passed BomWalkResult, since it refers to the originals
             }
 
             // ...and of back-references (if any):
@@ -662,6 +665,7 @@ namespace CycloneDX.Models
                                                 referrer.GetType() + "." + referrerPropInfo.Name + "[]: " +
                                                 oldRef);
                                         }
+
                                         referrerSubList[i] = newRef;
                                         hadHit = true;
                                         referrerModified++;
@@ -852,6 +856,11 @@ namespace CycloneDX.Models
                         }
                     }
                 }
+
+                // If the above went well: Also rename
+                // in BWR (uses String keys here)
+                res.dictBackrefs.Add(newRef, referrerList);
+                res.dictBackrefs.Remove(containedRef);
             }
 
             // Survived without exceptions! ;)
