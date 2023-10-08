@@ -238,6 +238,9 @@ namespace CycloneDX.Models
             // and BOM references are done by this value.
             // NOTE: If two otherwise identical components are refferred to
             // by different BomRef values - so be it, Bom duplicates remain.
+            // TODO: Refactor various code (likely MergeWith, maybe others)
+            // to not care about BomRef equality more than needed (needs to
+            // call document-wide renaming sometimes).
             if (this.Type == obj.Type // No nullness check here, or we get: error CS0037: Cannot convert null to 'Component.Classification' because it is a non-nullable value type
             &&  !(this.Name is null) && !(obj.Name is null) && this.Name == obj.Name
             &&  (this.Version is null || obj.Version is null || this.Version == obj.Version)
@@ -268,6 +271,10 @@ namespace CycloneDX.Models
         public static void NormalizeList(bool ascending, bool recursive, List<Component> list)
         {
             var sortHelper = new ListMergeHelper<Component>();
+            // TODO: With BomRef not necessarily coherent between docs
+            // (e.g. "1", "2", "3" are valid and not tied to the entity),
+            // aren't the other attributes the better values to have the
+            // higher-priority sorting order?
             sortHelper.SortByImpl(ascending, recursive, list,
                 o => (o?.BomRef, o?.Type, o?.Group, o?.Name, o?.Version),
                 null);
@@ -317,6 +324,8 @@ namespace CycloneDX.Models
             // this code into helper methods and patterns, so that only
             // specific property hits would be customized and the default
             // scaffolding shared.
+            // TODO: BomRef is not necessarily a factor for equivalence.
+            // However we would have to ensure renaming if it is different.
             if (
                 (this.BomRef != null && this.BomRef.Equals(obj.BomRef)) ||
                 (this.Group == obj.Group && this.Name == obj.Name && this.Version == obj.Version)
