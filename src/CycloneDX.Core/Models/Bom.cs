@@ -483,7 +483,7 @@ namespace CycloneDX.Models
                 }
                 else
                 {
-                    var propInfo = contained.GetType().GetProperty("BomRef", typeof(string));
+                    PropertyInfo propInfo = res.fallbackNonInterface ? contained.GetType().GetProperty("BomRef", typeof(string)) : null;
                     if (propInfo is null)
                     {
                         throw new BomEntityIncompatibleException("No \"string BomRef\" attribute in class: " + contained.GetType().Name);
@@ -516,7 +516,7 @@ namespace CycloneDX.Models
             {
                 bool objectHasStringBomRef = (namedObject is IBomEntityWithRefType_String_BomRef);
 
-                if (!objectHasStringBomRef)
+                if (!objectHasStringBomRef && res.fallbackNonInterface)
                 {
                     // Slower fallback to facilitate faster code evolution
                     // (with classes not marked as implementors of interfaces)
@@ -545,7 +545,7 @@ namespace CycloneDX.Models
                     }
                     else
                     {
-                        propInfo = namedObject.GetType().GetProperty("BomRef", typeof(string));
+                        propInfo = res.fallbackNonInterface ? namedObject.GetType().GetProperty("BomRef", typeof(string)) : null;
                         if (propInfo is null)
                         {
                             throw new BomEntityIncompatibleException("No \"string BomRef\" attribute in class: " + namedObject.GetType().Name);
@@ -555,7 +555,7 @@ namespace CycloneDX.Models
 
                     if (currentRef.ToString() == oldRef)
                     {
-                        if (namedObject is IBomEntityWithRefType_String_BomRef)
+                        if (!(res.fallbackNonInterface) || namedObject is IBomEntityWithRefType_String_BomRef)
                         {
                             ((IBomEntityWithRefType_String_BomRef)namedObject).SetBomRef(newRef);
                         }
@@ -584,12 +584,19 @@ namespace CycloneDX.Models
             }
 
             // ...and of back-references (if any):
+            bool backrefExists = false;
             foreach (var (containedRef, referrerList) in res.dictBackrefs)
             {
                 if (containedRef is null || containedRef != oldRef)
                 {
                     continue;
                 }
+
+                if (backrefExists)
+                {
+                    throw new BomEntityConflictException("Duplicate BomWalkResult.dictBackrefs map key detected pointing to a \"bom-ref\" identifier: " + oldRef);
+                }
+                backrefExists = true;
 
                 // Check each BomEntity known to refer to this "contained" item's name
                 foreach (var referrer in referrerList)
@@ -676,105 +683,108 @@ namespace CycloneDX.Models
                     }
                     else
                     {
-                        // Fallback for a few known classes with lists of refs:
-                        Type referrerType = referrer.GetType();
-                        if (referrerType == typeof(Composition))
+                        if (res.fallbackNonInterface)
                         {
-                            // This contains several lists of strings, and
-                            // at most one of string list items in each of
-                            // those should refer the "contained" entity.
-
-                            List<string> referrerSubList = ((Composition)referrer).Assemblies;
-                            if (referrerSubList != null && referrerSubList.Count > 0)
+                            // Fallback for a few known classes with lists of refs:
+                            Type referrerType = referrer.GetType();
+                            if (referrerType == typeof(Composition))
                             {
-                                bool hadHit = false;
+                                // This contains several lists of strings, and
+                                // at most one of string list items in each of
+                                // those should refer the "contained" entity.
 
-                                for (int i = 0; i < referrerSubList.Count; i++)
+                                List<string> referrerSubList = ((Composition)referrer).Assemblies;
+                                if (referrerSubList != null && referrerSubList.Count > 0)
                                 {
-                                    if (referrerSubList[i] == oldRef)
+                                    bool hadHit = false;
+
+                                    for (int i = 0; i < referrerSubList.Count; i++)
                                     {
-                                        if (hadHit)
+                                        if (referrerSubList[i] == oldRef)
                                         {
-                                            throw new BomEntityConflictException(
-                                                "Multiple references to a \"bom-ref\" identifier detected " +
-                                                "in the same list of unique items under " +
-                                                "Composition.Assemblies[]: " + oldRef);
+                                            if (hadHit)
+                                            {
+                                                throw new BomEntityConflictException(
+                                                    "Multiple references to a \"bom-ref\" identifier detected " +
+                                                    "in the same list of unique items under " +
+                                                    "Composition.Assemblies[]: " + oldRef);
+                                            }
+                                            referrerSubList[i] = newRef;
+                                            hadHit = true;
+                                            referrerModified++;
                                         }
-                                        referrerSubList[i] = newRef;
-                                        hadHit = true;
-                                        referrerModified++;
+                                    }
+                                }
+
+                                referrerSubList = ((Composition)referrer).Dependencies;
+                                if (referrerSubList != null && referrerSubList.Count > 0)
+                                {
+                                    bool hadHit = false;
+
+                                    for (int i = 0; i < referrerSubList.Count; i++)
+                                    {
+                                        if (referrerSubList[i] == oldRef)
+                                        {
+                                            if (hadHit)
+                                            {
+                                                throw new BomEntityConflictException(
+                                                    "Multiple references to a \"bom-ref\" identifier detected " +
+                                                    "in the same list of unique items under " +
+                                                    "Composition.Dependencies[]: " + oldRef);
+                                            }
+                                            referrerSubList[i] = newRef;
+                                            hadHit = true;
+                                            referrerModified++;
+                                        }
+                                    }
+                                }
+
+                                referrerSubList = ((Composition)referrer).Vulnerabilities;
+                                if (referrerSubList != null && referrerSubList.Count > 0)
+                                {
+                                    bool hadHit = false;
+
+                                    for (int i = 0; i < referrerSubList.Count; i++)
+                                    {
+                                        if (referrerSubList[i] == oldRef)
+                                        {
+                                            if (hadHit)
+                                            {
+                                                throw new BomEntityConflictException(
+                                                    "Multiple references to a \"bom-ref\" identifier detected " +
+                                                    "in the same list of unique items under " +
+                                                    "Composition.Vulnerabilities[]: " + oldRef);
+                                            }
+                                            referrerSubList[i] = newRef;
+                                            hadHit = true;
+                                            referrerModified++;
+                                        }
                                     }
                                 }
                             }
 
-                            referrerSubList = ((Composition)referrer).Dependencies;
-                            if (referrerSubList != null && referrerSubList.Count > 0)
+                            if (referrerType == typeof(EvidenceIdentity))
                             {
-                                bool hadHit = false;
-
-                                for (int i = 0; i < referrerSubList.Count; i++)
+                                List<string> referrerSubList = ((EvidenceIdentity)referrer).Tools;
+                                if (referrerSubList != null && referrerSubList.Count > 0)
                                 {
-                                    if (referrerSubList[i] == oldRef)
+                                    bool hadHit = false;
+
+                                    for (int i = 0; i < referrerSubList.Count; i++)
                                     {
-                                        if (hadHit)
+                                        if (referrerSubList[i] == oldRef)
                                         {
-                                            throw new BomEntityConflictException(
-                                                "Multiple references to a \"bom-ref\" identifier detected " +
-                                                "in the same list of unique items under " +
-                                                "Composition.Dependencies[]: " + oldRef);
+                                            if (hadHit)
+                                            {
+                                                throw new BomEntityConflictException(
+                                                    "Multiple references to a \"bom-ref\" identifier detected " +
+                                                    "in the same list of unique items under " +
+                                                    "EvidenceIdentity.Tools[]: " + oldRef);
+                                            }
+                                            referrerSubList[i] = newRef;
+                                            hadHit = true;
+                                            referrerModified++;
                                         }
-                                        referrerSubList[i] = newRef;
-                                        hadHit = true;
-                                        referrerModified++;
-                                    }
-                                }
-                            }
-
-                            referrerSubList = ((Composition)referrer).Vulnerabilities;
-                            if (referrerSubList != null && referrerSubList.Count > 0)
-                            {
-                                bool hadHit = false;
-
-                                for (int i = 0; i < referrerSubList.Count; i++)
-                                {
-                                    if (referrerSubList[i] == oldRef)
-                                    {
-                                        if (hadHit)
-                                        {
-                                            throw new BomEntityConflictException(
-                                                "Multiple references to a \"bom-ref\" identifier detected " +
-                                                "in the same list of unique items under " +
-                                                "Composition.Vulnerabilities[]: " + oldRef);
-                                        }
-                                        referrerSubList[i] = newRef;
-                                        hadHit = true;
-                                        referrerModified++;
-                                    }
-                                }
-                            }
-                        }
-
-                        if (referrerType == typeof(EvidenceIdentity))
-                        {
-                            List<string> referrerSubList = ((EvidenceIdentity)referrer).Tools;
-                            if (referrerSubList != null && referrerSubList.Count > 0)
-                            {
-                                bool hadHit = false;
-
-                                for (int i = 0; i < referrerSubList.Count; i++)
-                                {
-                                    if (referrerSubList[i] == oldRef)
-                                    {
-                                        if (hadHit)
-                                        {
-                                            throw new BomEntityConflictException(
-                                                "Multiple references to a \"bom-ref\" identifier detected " +
-                                                "in the same list of unique items under " +
-                                                "EvidenceIdentity.Tools[]: " + oldRef);
-                                        }
-                                        referrerSubList[i] = newRef;
-                                        hadHit = true;
-                                        referrerModified++;
                                     }
                                 }
                             }
@@ -787,7 +797,7 @@ namespace CycloneDX.Models
                     // list(s) of refs and a "ref" property.
                     bool referrerHasStringRef = (referrer is IBomEntityWithRefLinkType_String_Ref);
 
-                    if (!referrerHasStringRef)
+                    if (!referrerHasStringRef && res.fallbackNonInterface)
                     {
                         // Slower fallback to facilitate faster code evolution
                         PropertyInfo[] props =
@@ -812,7 +822,7 @@ namespace CycloneDX.Models
                         }
                         else
                         {
-                            propInfo = referrer.GetType().GetProperty("Ref", typeof(string));
+                            propInfo = res.fallbackNonInterface ? referrer.GetType().GetProperty("Ref", typeof(string)) : null;
                             if (propInfo is null)
                             {
                                 throw new BomEntityIncompatibleException("No \"string Ref\" attribute in class: " + referrer.GetType().Name);
@@ -822,7 +832,7 @@ namespace CycloneDX.Models
 
                         if (currentRef.ToString() == oldRef)
                         {
-                            if (referrer is IBomEntityWithRefLinkType_String_Ref)
+                            if (res.fallbackNonInterface || referrer is IBomEntityWithRefLinkType_String_Ref)
                             {
                                 ((IBomEntityWithRefLinkType_String_Ref)referrer).SetRef(newRef);
                             }
@@ -856,11 +866,15 @@ namespace CycloneDX.Models
                         }
                     }
                 }
+            }
 
-                // If the above went well: Also rename
-                // in BWR (uses String keys here)
-                res.dictBackrefs.Add(newRef, referrerList);
-                res.dictBackrefs.Remove(containedRef);
+            if (backrefExists)
+            {
+                // If the above went well: Also "rename" map keys
+                // in BWR (uses String keys here, not references
+                // to original objects like in the "direct" map).
+                res.dictBackrefs.Add(newRef, res.dictBackrefs[oldRef]);
+                res.dictBackrefs.Remove(oldRef);
             }
 
             // Survived without exceptions! ;)

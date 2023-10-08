@@ -1364,11 +1364,21 @@ namespace CycloneDX.Models
         /// </summary>
         readonly public Dictionary<String, List<BomEntity>> dictBackrefs = new Dictionary<String, List<BomEntity>>();
 
-        // Callers can enable performance monitoring
-        // (and printing in ToString() method) to help
-        // debug the data-walk overheads. Accounting
-        // does have a cost (~5% for a larger 20s run).
+        /// <summary>
+        /// Callers can enable performance monitoring
+        /// (and printing in ToString() method) to help
+        /// debug the data-walk overheads. Accounting
+        /// does have a cost (~5% for a larger 20s run).
+        /// </summary>
         public bool debugPerformance = false;
+
+        /// <summary>
+        /// If "true", query the class properties directly via reflection
+        /// (if suitable interfaces are not served). Deemed unnecessary
+        /// and time-wasting when ALL relevant BomEntity-derived classes
+        /// are properly marked with interfaces they should implement.
+        /// </summary>
+        public bool fallbackNonInterface = false;
 
         // Helpers for performance accounting - how hard
         // was it to discover the information in this
