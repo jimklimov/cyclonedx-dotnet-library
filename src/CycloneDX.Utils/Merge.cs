@@ -79,15 +79,19 @@ namespace CycloneDX.Utils
                 iDebugLevel = 0;
             }
 
-            if (listMergeHelperStrategy.renameConflictingComponents)
+            if (listMergeHelperStrategy.renameConflictingComponents
+            && (!(bom1 is null)) && (!(bom2 is null))
+            )
             {
                 // Part of intermediately-quick merging logic;
                 // currently handled in this class since it needs
                 // to see and manipulate the whole Bom document.
-                // It may have some tentacles in Components too.
+                // It may have some tentacles in Components too,
+                // but primary implementation to juggle different
+                // collections in the Bom objects is (so far) here.
                 // TODO: Conceal some of those Get*() calls if only
-                // relevant for test/debug runs, to not waste time
-                // in production.
+                // relevant for test/debug runs, so as to not waste
+                // time in production runs.
                 if (iDebugLevel >= 2)
                 {
                     Console.WriteLine($"FLAT-MERGE: {DateTime.Now}: inspecting bom document walks...");
@@ -97,15 +101,21 @@ namespace CycloneDX.Utils
                 {
                     Console.WriteLine($"FLAT-MERGE: {DateTime.Now}: inspecting bom1: got {bwr1}");
                 }
+                // Dictionary whose keys are "container" BomEntities
+                // and values are lists of one or more directly
+                // "contained" entities with a BomRef attribute:
                 Dictionary<BomEntity, List<BomEntity>> dict1ByC = bwr1.GetBomRefsInContainers();
                 if (iDebugLevel >= 4)
                 {
                     Console.WriteLine($"FLAT-MERGE: {DateTime.Now}: inspecting bom1: got {dict1ByC.Count} BomRef-entity containers");
                 }
-                Dictionary<BomEntity, BomEntity> dict1 = bwr1.GetBomRefsWithContainer();
+                // Dictionary whose keys are "contained" entities
+                // with a BomRef attribute and values are their
+                // direct "container" BomEntities:
+                Dictionary<BomEntity, BomEntity> dictBomrefs1 = bwr1.GetBomRefsWithContainer();
                 if (iDebugLevel >= 4)
                 {
-                    Console.WriteLine($"FLAT-MERGE: {DateTime.Now}: inspecting bom1: got {dict1.Count} BomRefs");
+                    Console.WriteLine($"FLAT-MERGE: {DateTime.Now}: inspecting bom1: got {dictBomrefs1.Count} BomRefs");
                 }
 
                 BomWalkResult bwr2 = bom2.WalkThis();
@@ -118,13 +128,45 @@ namespace CycloneDX.Utils
                 {
                     Console.WriteLine($"FLAT-MERGE: {DateTime.Now}: inspecting bom2: got {dict2ByC.Count} BomRef-entity containers");
                 }
-                Dictionary<BomEntity, BomEntity> dict2 = bwr2.GetBomRefsWithContainer();
+                Dictionary<BomEntity, BomEntity> dictBomrefs2 = bwr2.GetBomRefsWithContainer();
                 if (iDebugLevel >= 4)
                 {
-                    Console.WriteLine($"FLAT-MERGE: {DateTime.Now}: inspecting bom2: got {dict2.Count} BomRefs");
+                    Console.WriteLine($"FLAT-MERGE: {DateTime.Now}: inspecting bom2: got {dictBomrefs2.Count} BomRefs");
                 }
 
+                /* TOTHINK: Maybe extend this later, to cover other
+                 * "container" and "contained" entities as well?..
+                 *
+                 * Currently the plan is: walk all known Component
+                 * instances to check if some are Equivalent(),
+                 * and quickly evaluate if they may be squashed
+                 * into one (functionally same Scope inside, same
+                 * set of top-level Dependencies outside which
+                 * "ref" it - unless null). If squashable fully,
+                 * name (bom-ref) them as such. If squashable
+                 * partially (basically equivalent, and fields
+                 * like Hashes, Licenses etc. can be merged)
+                 * then do so to have the fullest less-critical
+                 * but still useful data same in all instances.
+                 * If not fully squashable, ensure different
+                 * names (e.g. add a predictable suffix to a
+                 * "bom-ref", so we can quickly look for other
+                 * "equivalents" to grab their low-priority
+                 * contents later).
+                 *
+                 * Beside that Component focus laid out above,
+                 * there should be a pass over Bom.Dependencies[]
+                 * top-level entries, to make sure there are no
+                 * two same BomRef values (strings) remaining
+                 * which point to different dependency lists.
+                 *
+                 * Maybe some smarter "tomorrow-we's" would find
+                 * a way to put this logic into Bom.MergeWith()
+                 * coherently, but for the first shot it is here.
+                 */
+
                 /* Initial use-case for BomWalkResult discoveries to see how they scale */
+/*
                 try {
                     bom2.RenameBomRef("bogus", "123", bwr2);
                 } catch (Exception ex) {
@@ -148,6 +190,7 @@ namespace CycloneDX.Utils
                 } catch (Exception ex) {
                     Console.WriteLine(ex.ToString());
                 }
+*/
             }
 
             var result = new Bom();
