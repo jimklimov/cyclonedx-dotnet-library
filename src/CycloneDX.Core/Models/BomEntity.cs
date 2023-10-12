@@ -2142,6 +2142,127 @@ namespace CycloneDX.Models
         }
 
         /// <summary>
+        /// A special sepection of entries that are directly items
+        /// in the Bom.Dependencies[] list, so describe the deps
+        /// make-up of a certain "ref"erred entity. A non-trivial
+        /// List constrainTypes can limit the dictionary to include
+        /// e.g. only references to Component entities (if defined
+        /// in this Bom document).
+        /// </summary>
+        /// <returns>null upon error (e.g. this walk is not about a Bom)</returns>
+        public Dictionary<String, Dependency> GetRefsInToplevelDependencies(bool requireExistingRef, List<Type> typeConstraints)
+        {
+            if (dictBackrefs == null || dictBackrefs.Count < 1
+            || bomRoot == null || !(bomRoot is Bom)
+            )
+            {
+                return null;
+            }
+
+            bool checkTypeConstraints = (typeConstraints != null && typeConstraints.Count > 1);
+
+            Dictionary<String, Dependency> dict = new Dictionary<String, Dependency>();
+            foreach (var (backref, referrers) in dictBackrefs)
+            {
+                if (referrers == null || referrers.Count < 1)
+                {
+                    continue;
+                }
+
+                BomEntity referred = null;
+                if (checkTypeConstraints || requireExistingRef)
+                {
+                    // FIXME: Implement checking that "ref" value
+                    // is known in this Bom document walk.
+                }
+
+                if (requireExistingRef && referred == null)
+                {
+                    // Consider requireExistingRef for non-existent
+                    // BomEntity values (not in current Bom document =>
+                    // maybe refs to some other document or anticipated
+                    // to appear after a merge with some other document).
+                    continue;
+                }
+
+                if (checkTypeConstraints)
+                {
+                    // Check vs. our other maps that "backref" names
+                    // a BomEntity of an acceptable type in the same
+                    // Bom document (filtered above if caller doesn't
+                    // care when entity does not exist in this Bom).
+                    if (referred != null && !(typeConstraints.Contains(referred.GetType())))
+                    {
+                        continue;
+                    }
+
+                    // TOTHINK: Is any further handling still needed
+                    // for "requireExistingRef" possible values?
+                }
+
+                foreach (var referrer in referrers)
+                {
+                    if (referrer == null || !(referrer is Dependency))
+                    {
+                        continue;
+                    }
+
+                    foreach (var dep in ((Bom)bomRoot).Dependencies)
+                    {
+                        if (dep != null && Object.ReferenceEquals(dep, referrer))
+                        {
+                            // Map the "ref" name to the Dependency entity that has it
+                            if (dict.ContainsKey(backref))
+                            {
+                                throw new BomEntityConflictException("Duplicate Bom.Dependencies[] entries refer to same \"ref\" identifier: " + backref);
+                            }
+                            dict[backref] = (Dependency)referrer;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            return dict;
+        }
+
+        /// <summary>
+        /// A variant of GetRefsInToplevelDependencies() which does not
+        /// require that a referred entity exists in the same walked
+        /// document, and if it does - it may be of any type.
+        /// </summary>
+        /// <param name="typeConstraints"></param>
+        /// <returns></returns>
+        public Dictionary<String, Dependency> GetRefsInToplevelDependencies()
+        {
+            return GetRefsInToplevelDependencies(false, null);
+        }
+
+        /// <summary>
+        /// A variant of GetRefsInToplevelDependencies() which allows to
+        /// specify a requirement whether a referred entity must exist
+        /// in the same walked document, but it may be of any type.
+        /// </summary>
+        /// <param name="typeConstraints"></param>
+        /// <returns></returns>
+        public Dictionary<String, Dependency> GetRefsInToplevelDependencies(bool requireExistingRef)
+        {
+            return GetRefsInToplevelDependencies(requireExistingRef, null);
+        }
+
+        /// <summary>
+        /// A variant of GetRefsInToplevelDependencies() which requires that
+        /// a referred entity exists in the same walked document, and is of
+        /// a specified type.
+        /// </summary>
+        /// <param name="typeConstraints"></param>
+        /// <returns></returns>
+        public Dictionary<String, Dependency> GetRefsInToplevelDependencies(List<Type> typeConstraints)
+        {
+            return GetRefsInToplevelDependencies(true, typeConstraints);
+        }
+
+        /// <summary>
         /// Provide a Dictionary whose keys are "contained" entities
         /// with a BomRef attribute and values are their direct
         /// container BomEntities, e.g. each Bom.Components[] list
