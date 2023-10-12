@@ -245,7 +245,7 @@ namespace CycloneDX.Models
             &&  !(this.Name is null) && !(obj.Name is null) && this.Name == obj.Name
             &&  (this.Version is null || obj.Version is null || this.Version == obj.Version)
             &&  (this.Purl is null || obj.Purl is null || this.Purl == obj.Purl)
-            &&  (this.BomRef is null || obj.BomRef is null || this.BomRef == obj.BomRef)
+            //&&  (this.BomRef is null || obj.BomRef is null || this.BomRef == obj.BomRef) // may be even toxic
             )
             {
                 // These two seem equivalent enough to go on with the more
