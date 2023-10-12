@@ -70,6 +70,12 @@ namespace CycloneDX.Models
 
         /// <summary>
         /// See IBomEntityWithRefLinkType.GetRefLinkConstraints().
+        ///
+        /// FIXME: Since CDX 1.5, XML schema and C# implementation for
+        /// Workflow.TaskDependencies, Workflow.RuntimeTopologies and
+        /// WorkflowTask.RuntimeTopologies are also each typed as a
+        /// List<Dependency>, but these may refer to some other types
+        /// than component-or-service, maybe?.. Sub-class if needed.
         /// </summary>
         /// <param name="specificationVersion"></param>
         /// <returns></returns>
