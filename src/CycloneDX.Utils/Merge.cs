@@ -164,6 +164,92 @@ namespace CycloneDX.Utils
                  * a way to put this logic into Bom.MergeWith()
                  * coherently, but for the first shot it is here.
                  */
+                Dictionary<String, Dependency> toplevelDeps1 = bwr1.GetRefsInToplevelDependencies();
+                Dictionary<String, Dependency> toplevelDeps2 = bwr2.GetRefsInToplevelDependencies();
+                foreach (var (contained1, container1) in dictBomrefs1)
+                {
+                    /* FIXME: Here we only know how to care about Components */
+                    if (contained1 is null || !(contained1 is Component))
+                    {
+                        continue;
+                    }
+                    foreach (var (contained2, container2) in dictBomrefs2)
+                    {
+                        if (contained2 is null || !(contained2 is Component))
+                        {
+                            continue;
+                        }
+
+                        // Do they describe the same real-life entity
+                        // (the best we can tell; and maybe describing
+                        // it differently - something MergeWith() will
+                        // take care about)?
+                        if (!(contained2.Equivalent(contained1)))
+                        {
+                            continue;
+                        }
+
+                        string containedBomRef1 = contained1.GetBomRef();
+                        string containedBomRef2 = contained2.GetBomRef();
+                        Dependency dep1 = null;
+                        Dependency dep2 = null;
+                        /* FIXME: Here we only know how to care about
+                         * Dependencies, but not e.g. Compositions */
+                        // Look only at top-level deps (which define lists
+                        // of third-party dependencies for the "ref" they
+                        // describe).
+                        if (containedBomRef1 != null
+                        && toplevelDeps1.TryGetValue(containedBomRef1, out Dependency dep1tmp)
+                        )
+                        {
+                            dep1 = dep1tmp;
+                        }
+
+                        if (dep1 != null
+                        && containedBomRef2 != null
+                        && toplevelDeps2.TryGetValue(containedBomRef2, out Dependency dep2tmp)
+                        )
+                        {
+                            dep2 = dep2tmp;
+                        }
+
+                        // Note: an empty but existing list of Dependency.Dependencies[]
+                        // per spec means "known to have no dependencies", same as some
+                        // non-trivial list is exhaustive. An unknown state must use null.
+                        if (dep1 != null && dep2 != null && dep1.Dependencies != null && dep2.Dependencies != null)
+                        {
+                            if (dep1.Dependencies.Count > 0 && dep2.Dependencies.Count > 0) // For test, let it slide for explicitly empty lists
+                            if (!(dep1.Equals(dep2)))
+                            {
+                                if (containedBomRef1 == containedBomRef2)
+                                {
+                                    // FIXME: ensure renaming...
+                                    throw new BomEntityConflictException($"Different Bom.Dependencies[] entries in the two documents refer to same \"ref\" identifier: {containedBomRef1}\n\t{dep1.SerializeEntity()}\n\t{dep2.SerializeEntity()}");
+                                }
+                                // else: equivalent entries with different BomRefs
+                                throw new BomEntityConflictException($"TEST: Different Bom.Dependencies[] entries in the two documents refer to Equivalent entities with different \"ref\" identifiers: {containedBomRef1} and {containedBomRef2}\n\t{dep1.SerializeEntity()}\n\t{dep2.SerializeEntity()}");
+                            }
+                        }
+
+/*
+                        foreach (var dep in bom1.Dependencies)
+                        {
+                            if (dep != null && dep.Ref == containedBomRef1) {
+                                deps1 = dep;
+                                break;
+                            }
+                        }
+
+                        foreach (var dep in bom2.Dependencies)
+                        {
+                            if (dep != null && dep.Ref == containedBomRef1) {
+                                deps2 = dep;
+                                break;
+                            }
+                        }
+*/
+                    }
+                }
 
                 /* Initial use-case for BomWalkResult discoveries to see how they scale */
 /*
