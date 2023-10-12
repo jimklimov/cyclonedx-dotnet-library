@@ -143,6 +143,38 @@ namespace CycloneDX.Models
         public bool renameConflictingComponents { get; set; }
 
         /// <summary>
+        /// CycloneDX spec for "dependenciesType" says that
+        /// "Components or services that do not have their
+        /// own dependencies MUST be declared as empty
+        /// elements within the graph", which may imply but
+        /// does not state explicitly that any non-null list
+        /// of such direct dependencies is to be treated as
+        /// complete and final.
+        ///
+        /// In merging practice however we see Bom documents,
+        /// even prepared by one build routine of different
+        /// aspects of the same codebase (e.g. of Java modules
+        /// and a parent parsed by cyclonedx-maven-plugin),
+        /// whose lists of direct dependencies do differ for
+        /// the same referenced component definition in two
+        /// Bom documents.
+        ///
+        /// Sometimes it is empty vs. having content, other
+        /// times both have content but one is a subset of
+        /// another. This toggle tells the merge algorithm
+        /// to tolerate such differences and let the direct
+        /// dependency lists strictly grow by merging.
+        ///
+        /// There is also a further case, where such direct
+        /// dependency lists claim use of different versions
+        /// of a further component (or generally different
+        /// sets of components). Such dependency lists are
+        /// not subsets of each other, and entities should
+        /// be renamed before/during merge instead.
+        /// </summary>
+        public bool mergeSubsetDependencies { get; set; }
+
+        /// <summary>
         /// CycloneDX spec version.
         /// </summary>
         public SpecificationVersion specificationVersion { get; set; }
@@ -174,6 +206,7 @@ namespace CycloneDX.Models
             {
                 useBomEntityMerge = true,
                 renameConflictingComponents = true,
+                mergeSubsetDependencies = true,
                 doBomMetadataUpdate = false,
                 doBomMetadataUpdateNewSerialNumber = false,
                 doBomMetadataUpdateReferThisToolkit = false,
