@@ -894,22 +894,22 @@ namespace CycloneDX.Models
             }) ();
 
         /// <summary>Used by IBomEntityWithRefLinkType.GetRefLinkConstraints() in some descendant classes.</summary>
-        public static readonly ImmutableList<Type> RefLinkConstraints_AnyBomEntity = new List<Type>() {typeof(CycloneDX.Models.BomEntity)}.ToImmutableList();
+        public static readonly ImmutableList<Type> RefLinkConstraints_AnyBomEntity = new List<Type> {typeof(CycloneDX.Models.BomEntity)}.ToImmutableList();
 
         /// <summary>Used by IBomEntityWithRefLinkType.GetRefLinkConstraints() in some descendant classes.</summary>
-        public static readonly ImmutableList<Type> RefLinkConstraints_Component = new List<Type>() {typeof(CycloneDX.Models.Component)}.ToImmutableList();
+        public static readonly ImmutableList<Type> RefLinkConstraints_Component = new List<Type> {typeof(CycloneDX.Models.Component)}.ToImmutableList();
 
         /// <summary>Used by IBomEntityWithRefLinkType.GetRefLinkConstraints() in some descendant classes.</summary>
-        public static readonly ImmutableList<Type> RefLinkConstraints_Service = new List<Type>() {typeof(CycloneDX.Models.Service)}.ToImmutableList();
+        public static readonly ImmutableList<Type> RefLinkConstraints_Service = new List<Type> {typeof(CycloneDX.Models.Service)}.ToImmutableList();
 
         /// <summary>Used by IBomEntityWithRefLinkType.GetRefLinkConstraints() in some descendant classes.</summary>
-        public static readonly ImmutableList<Type> RefLinkConstraints_ComponentOrService = new List<Type>() {typeof(CycloneDX.Models.Component), typeof(CycloneDX.Models.Service)}.ToImmutableList();
+        public static readonly ImmutableList<Type> RefLinkConstraints_ComponentOrService = new List<Type> {typeof(CycloneDX.Models.Component), typeof(CycloneDX.Models.Service)}.ToImmutableList();
 
         /// <summary>Used by IBomEntityWithRefLinkType.GetRefLinkConstraints() in some descendant classes.</summary>
-        public static readonly ImmutableList<Type> RefLinkConstraints_ModelDataset = new List<Type>() {typeof(CycloneDX.Models.Data)}.ToImmutableList();
+        public static readonly ImmutableList<Type> RefLinkConstraints_ModelDataset = new List<Type> {typeof(CycloneDX.Models.Data)}.ToImmutableList();
 
         /// <summary>Used by IBomEntityWithRefLinkType.GetRefLinkConstraints() in some descendant classes.</summary>
-        public static readonly ImmutableList<Type> RefLinkConstraints_Vulnerability = new List<Type>() {typeof(CycloneDX.Models.Vulnerabilities.Vulnerability)}.ToImmutableList();
+        public static readonly ImmutableList<Type> RefLinkConstraints_Vulnerability = new List<Type> {typeof(CycloneDX.Models.Vulnerabilities.Vulnerability)}.ToImmutableList();
 
         protected BomEntity()
         {
@@ -1375,15 +1375,16 @@ namespace CycloneDX.Models
         /// The BomEntity (normally a whole Bom document)
         /// which was walked and reported here.
         /// </summary>
-        public BomEntity bomRoot = null;
+        private BomEntity bomRoot { get; set; }
 
         /// <summary>
         /// Populated by GetBomRefsInContainers(),
         /// keys are "container" entities and values
         /// are lists of "contained" entities which
         /// have a BomRef or equivalent property.
+        /// Exposed by GetBomRefsInContainers().
         /// </summary>
-        readonly public Dictionary<BomEntity, List<BomEntity>> dictRefsInContainers = new Dictionary<BomEntity, List<BomEntity>>();
+        readonly private Dictionary<BomEntity, List<BomEntity>> dictRefsInContainers = new Dictionary<BomEntity, List<BomEntity>>();
 
         /// <summary>
         /// Populated by GetBomRefsInContainers(),
@@ -1394,8 +1395,9 @@ namespace CycloneDX.Models
         /// with external links to other Bom documents!),
         /// and values are lists of entities which use
         /// this same "ref" value.
+        /// Exposed by GetRefsInContainers().
         /// </summary>
-        readonly public Dictionary<String, List<BomEntity>> dictBackrefs = new Dictionary<String, List<BomEntity>>();
+        readonly private Dictionary<String, List<BomEntity>> dictBackrefs = new Dictionary<String, List<BomEntity>>();
 
         /// <summary>
         /// Callers can enable performance monitoring
@@ -1403,7 +1405,9 @@ namespace CycloneDX.Models
         /// debug the data-walk overheads. Accounting
         /// does have a cost (~5% for a larger 20s run).
         /// </summary>
-        public bool debugPerformance = false;
+        #pragma warning disable S3052
+        private bool debugPerformance { get; set; } = false;
+        #pragma warning restore S3052
 
         /// <summary>
         /// If "true", query the class properties directly via reflection
@@ -1435,8 +1439,9 @@ namespace CycloneDX.Models
         private int sbeCountNewBomRefCheckDict { get; set; }
         private int sbeCountNewBomRef { get; set; }
 
-        // This one is null, outermost loop makes a new instance, starts and stops it:
-        private Stopwatch stopWatchWalkTotal = null;
+        // This one is initially null: the outermost walk loop
+        // makes a new instance, starts and stops this stopwatch
+        private Stopwatch stopWatchWalkTotal;
         private Stopwatch stopWatchEvalAttr = new Stopwatch();
         private Stopwatch stopWatchNewBomref = new Stopwatch();
         private Stopwatch stopWatchNewBomrefCheck = new Stopwatch();
@@ -1885,6 +1890,8 @@ namespace CycloneDX.Models
                             sbeCountNewBomRefCheckDict++;
                             stopWatchNewBomrefCheck.Start();
                         }
+
+                        #pragma warning disable S125
                         // "proper" dict key lookup probably goes via hashes
                         // which go via serialization for BomEntity classes,
                         // and so walking a Bom with a hundred Components
@@ -1897,6 +1904,7 @@ namespace CycloneDX.Models
                         // this should not happen in this loop, and the
                         // intention is to keep tabs on references to all
                         // original objects so we can rename what we need):
+                        #pragma warning restore S125
                         foreach (var (cont, list) in dictRefsInContainers)
                         {
                             if (Object.ReferenceEquals(container, cont))
@@ -1935,7 +1943,7 @@ namespace CycloneDX.Models
                         sbeCountNewBomRef++;
                         stopWatchNewBomrefListAdd.Start();
                     }
-                    containerList.Add((BomEntity)obj);
+                    containerList.Add(obj);
                     if (debugPerformance)
                     {
                         stopWatchNewBomrefListAdd.Stop();
@@ -2125,7 +2133,8 @@ namespace CycloneDX.Models
                 SerializeBomEntity_BomRefs((BomEntity)propVal, obj);
             }
 
-            if (isTimeAccounter && debugPerformance)
+            // nullness check seems bogus, but Codacy insists...
+            if (isTimeAccounter && debugPerformance && !(stopWatchWalkTotal is null))
             {
                 stopWatchWalkTotal.Stop();
             }
