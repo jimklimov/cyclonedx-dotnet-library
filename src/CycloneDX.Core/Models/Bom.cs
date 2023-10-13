@@ -916,8 +916,9 @@ namespace CycloneDX.Models
                 // If the above went well: Also "rename" map keys
                 // in BWR (uses String keys here, not references
                 // to original objects like in the "direct" map).
-                res.dictBackrefs.Add(newRef, res.dictBackrefs[oldRef]);
-                res.dictBackrefs.Remove(oldRef);
+                Dictionary<String, List<BomEntity>> dictBackrefs = res.GetRefsInContainers();
+                dictBackrefs.Add(newRef, dictBackrefs[oldRef]);
+                dictBackrefs.Remove(oldRef);
             }
 
             // Survived without exceptions! ;)
