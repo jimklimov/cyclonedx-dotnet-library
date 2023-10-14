@@ -175,6 +175,17 @@ namespace CycloneDX.Models
         public bool mergeSubsetDependencies { get; set; }
 
         /// <summary>
+        /// Treat back-references from dependencies as in
+        /// fact an externally stored internal detail of
+        /// the referenced component or service? This is
+        /// what the spec authors implied, but there are
+        /// known use-cases which desire to treat them
+        /// independently. See also:
+        /// https://github.com/CycloneDX/specification/discussions/320
+        /// </summary>
+        public bool treatDependencyAsExtraProperty { get; set; }
+
+        /// <summary>
         /// CycloneDX spec version.
         /// </summary>
         public SpecificationVersion specificationVersion { get; set; }
@@ -207,6 +218,7 @@ namespace CycloneDX.Models
                 useBomEntityMerge = true,
                 renameConflictingComponents = true,
                 mergeSubsetDependencies = true,
+                treatDependencyAsExtraProperty = true,
                 doBomMetadataUpdate = false,
                 doBomMetadataUpdateNewSerialNumber = false,
                 doBomMetadataUpdateReferThisToolkit = false,
