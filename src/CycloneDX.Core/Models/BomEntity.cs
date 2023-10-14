@@ -144,6 +144,42 @@ namespace CycloneDX.Models
         public bool renameConflictingComponents { get; set; }
 
         /// <summary>
+        /// If Equivalent() Component entities are not fully equal,
+        /// but their available data can be added from one to another
+        /// without overwriting existing entries (e.g. if several
+        /// tools were used originally - one for technical details
+        /// about the sources, another for market-specific licensing
+        /// info about the component distribution or about hashes
+        /// of files from its particular build; and merged-SBOM
+        /// authors want this information represented as one entity,
+        /// not as a tree of sub-structured or dependent entities -
+        /// e.g. to hide internal details for external presentation,
+        /// or because some tools can not consume the more complex
+        /// CycloneDX data structures), this toggle allows to "squash"
+        /// such entries into one.
+        /// If they are not squashable without conflict, or if this
+        /// toggle is disabled, such components should be uniquely
+        /// renamed.
+        /// </summary>
+        public bool squashModeratelyConflictingComponents { get; set; }
+
+        /// <summary>
+        /// Component.Scope has values (required, optional, excluded)
+        /// with certain meanings defined in CycloneDX spec. When the
+        /// components are grouped into a larger product, their original
+        /// Scope values might become or not become irrelevant.
+        /// For example, if some third-party library was only used for
+        /// tests of one Component (marked "optional" in the original
+        /// Bom document which describes it), but has run-time uses
+        /// in another Component (marked "required" in its Bom), then
+        /// for the resulting merged Bom document it might be actually
+        /// a "required" single entity (if the merge describes one
+        /// build product) or not (if it is a bundle with separate
+        /// programs) - so uniquely named entities are needed instead.
+        /// </summary>
+        public bool squashModeratelyConflictingComponents_UpgradeScope { get; set; }
+
+        /// <summary>
         /// CycloneDX spec for "dependenciesType" says that
         /// "Components or services that do not have their
         /// own dependencies MUST be declared as empty
@@ -220,6 +256,8 @@ namespace CycloneDX.Models
                 renameConflictingComponents = true,
                 mergeSubsetDependencies = true,
                 treatDependencyAsExtraProperty = true,
+                squashModeratelyConflictingComponents = true,
+                squashModeratelyConflictingComponents_UpgradeScope = false,
                 doBomMetadataUpdate = false,
                 doBomMetadataUpdateNewSerialNumber = false,
                 doBomMetadataUpdateReferThisToolkit = false,
