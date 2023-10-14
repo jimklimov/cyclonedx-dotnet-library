@@ -191,85 +191,91 @@ namespace CycloneDX.Utils
 
                         string containedBomRef1 = contained1.GetBomRef();
                         string containedBomRef2 = contained2.GetBomRef();
-                        Dependency dep1 = null;
-                        Dependency dep2 = null;
-                        /* FIXME: Here we only know how to care about
-                         * Dependencies, but not e.g. Compositions */
-                        // Look only at top-level deps (which define lists
-                        // of third-party dependencies for the "ref" they
-                        // describe).
-                        if (containedBomRef1 != null
-                        && toplevelDeps1.TryGetValue(containedBomRef1, out Dependency dep1tmp)
-                        )
+                        // TODO: Here we only know how to care about
+                        // Dependencies, but not e.g. Compositions or
+                        // other types which might possibly impose
+                        // constraints on the notion of "same-ness"
+                        // of other entities like Components/Services.
+                        if (listMergeHelperStrategy.treatDependencyAsExtraProperty)
                         {
-                            dep1 = dep1tmp;
-                        }
-
-                        if (dep1 != null
-                        && containedBomRef2 != null
-                        && toplevelDeps2.TryGetValue(containedBomRef2, out Dependency dep2tmp)
-                        )
-                        {
-                            dep2 = dep2tmp;
-                        }
-
-                        // Note: an empty but existing list of Dependency.Dependencies[]
-                        // per spec means "known to have no dependencies", which may be
-                        // extended as treating some non-trivial list as exhaustive.
-                        // An unknown state must use null.
-                        //
-                        // In practice however we can see various mixes, see comments for
-                        // BomEntityListMergeHelperStrategy.mergeSubsetDependencies toggle.
-                        if (dep1 != null && dep2 != null && dep1.Dependencies != null && dep2.Dependencies != null)
-                        {
-                            if (!(dep1.Equals(dep2)))
+                            Dependency dep1 = null;
+                            Dependency dep2 = null;
+                            // Look only at top-level deps (which define lists
+                            // of third-party dependencies for the "ref" they
+                            // describe).
+                            if (containedBomRef1 != null
+                            && toplevelDeps1.TryGetValue(containedBomRef1, out Dependency dep1tmp)
+                            )
                             {
-                                bool canMergeDeps = false;
-                                if (listMergeHelperStrategy.mergeSubsetDependencies)
-                                {
-                                    // Check if the differing lists are strictly
-                                    // a subset of one another (including empty)
-                                    if (dep1.Dependencies.Count < 1 || dep2.Dependencies.Count < 1)
-                                    {
-                                        // Let it slide for explicitly empty non-null lists
-                                        canMergeDeps = true;
-                                    }
-                                    else
-                                    {
-                                        // check if ALL items of either one list
-                                        // are present in another
-                                        bool isSubset1 = true;
-                                        bool isSubset2 = true;
-                                        foreach (var tmp in dep1.Dependencies.Except(dep2.Dependencies))
-                                        {
-                                            // Extra items exist
-                                            isSubset1 = false;
-                                            break;
-                                        }
-                                        foreach (var tmp in dep2.Dependencies.Except(dep1.Dependencies))
-                                        {
-                                            // Extra items exist
-                                            isSubset2 = false;
-                                            break;
-                                        }
-                                        canMergeDeps = (isSubset1 || isSubset2);
-                                    }
-                                }
+                                dep1 = dep1tmp;
+                            }
 
-                                // TODO: Pre-enumerate ALL equivalent components on both sides,
-                                // maybe the one counterpart we are looking at now is not the
-                                // one we would want to merge with eventually (e.g. pre-renamed
-                                // in an earlier loop).
-                                if (!canMergeDeps)
+                            if (dep1 != null
+                            && containedBomRef2 != null
+                            && toplevelDeps2.TryGetValue(containedBomRef2, out Dependency dep2tmp)
+                            )
+                            {
+                                dep2 = dep2tmp;
+                            }
+
+                            // Note: an empty but existing list of Dependency.Dependencies[]
+                            // per spec means "known to have no dependencies", which may be
+                            // extended as treating some non-trivial list as exhaustive.
+                            // An unknown state must use null.
+                            //
+                            // In practice however we can see various mixes, see comments for
+                            // BomEntityListMergeHelperStrategy.mergeSubsetDependencies toggle.
+                            if (dep1 != null && dep2 != null && dep1.Dependencies != null && dep2.Dependencies != null)
+                            {
+                                if (!(dep1.Equals(dep2)))
                                 {
-                                    if (containedBomRef1 == containedBomRef2)
+                                    bool canMergeDeps = false;
+                                    if (listMergeHelperStrategy.mergeSubsetDependencies)
                                     {
-                                        // FIXME: ensure renaming...
-                                        throw new BomEntityConflictException($"Different Bom.Dependencies[] entries in the two documents refer to same \"ref\" identifier: {containedBomRef1}\n\t{dep1.SerializeEntity()}\n\t{dep2.SerializeEntity()}");
+                                        // Check if the differing lists are strictly
+                                        // a subset of one another (including empty)
+                                        if (dep1.Dependencies.Count < 1 || dep2.Dependencies.Count < 1)
+                                        {
+                                            // Let it slide for explicitly empty non-null lists
+                                            canMergeDeps = true;
+                                        }
+                                        else
+                                        {
+                                            // check if ALL items of either one list
+                                            // are present in another
+                                            bool isSubset1 = true;
+                                            bool isSubset2 = true;
+                                            foreach (var tmp in dep1.Dependencies.Except(dep2.Dependencies))
+                                            {
+                                                // Extra items exist
+                                                isSubset1 = false;
+                                                break;
+                                            }
+                                            foreach (var tmp in dep2.Dependencies.Except(dep1.Dependencies))
+                                            {
+                                                // Extra items exist
+                                                isSubset2 = false;
+                                                break;
+                                            }
+                                            canMergeDeps = (isSubset1 || isSubset2);
+                                        }
                                     }
-                                    // else: equivalent entries with already different BomRefs and unreconcilable deps lists
-                                    // FIXME: already "renamed", so no need to throw - this is just for dev visibility...
-                                    throw new BomEntityConflictException($"TEST: Different Bom.Dependencies[] entries in the two documents refer to Equivalent entities with different \"ref\" identifiers: {containedBomRef1} and {containedBomRef2}\n\t{dep1.SerializeEntity()}\n\t{dep2.SerializeEntity()}");
+
+                                    // TODO: Pre-enumerate ALL equivalent components on both sides,
+                                    // maybe the one counterpart we are looking at now is not the
+                                    // one we would want to merge with eventually (e.g. pre-renamed
+                                    // in an earlier loop).
+                                    if (!canMergeDeps)
+                                    {
+                                        if (containedBomRef1 == containedBomRef2)
+                                        {
+                                            // FIXME: ensure renaming...
+                                            throw new BomEntityConflictException($"Different Bom.Dependencies[] entries in the two documents refer to same \"ref\" identifier: {containedBomRef1}\n\t{dep1.SerializeEntity()}\n\t{dep2.SerializeEntity()}");
+                                        }
+                                        // else: equivalent entries with already different BomRefs and unreconcilable deps lists
+                                        // FIXME: already "renamed", so no need to throw - this is just for dev visibility...
+                                        throw new BomEntityConflictException($"TEST: Different Bom.Dependencies[] entries in the two documents refer to Equivalent entities with different \"ref\" identifiers: {containedBomRef1} and {containedBomRef2}\n\t{dep1.SerializeEntity()}\n\t{dep2.SerializeEntity()}");
+                                    }
                                 }
                             }
                         }
