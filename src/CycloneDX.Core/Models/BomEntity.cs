@@ -93,7 +93,8 @@ namespace CycloneDX.Models
         /// but instead rename the two siblings' values of
         /// "bom-ref", suffixing the ":scope" - including
         /// the back-references from locations known by spec.
-        /// Also consider equality of non-null Dependencies
+        /// If treatDependencyAsExtraProperty is true (default)
+        /// also consider equality of non-null Dependencies
         /// pointing back to their same BomRef value in the
         /// two original Bom documents (notably honouring the
         /// explicitly empty "dependsOn" lists -- NOT NULL).
@@ -225,6 +226,12 @@ namespace CycloneDX.Models
                 specificationVersion = SpecificationVersionHelpers.CurrentVersion
             };
         }
+
+        // TODO: Add a setter from Dictionary (or json/xml/yaml...?)
+        // to allow for configuration files or REST API calls, instead
+        // of adding CLI toggles etc. for each nuance (and so re-coding
+        // and rebuilding consumers whenever this library is updated
+        // with new merge behaviors).
     }
 
     public class BomEntityListMergeHelper<T> where T : BomEntity
