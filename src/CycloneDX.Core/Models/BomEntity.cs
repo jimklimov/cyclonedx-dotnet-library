@@ -1375,7 +1375,7 @@ namespace CycloneDX.Models
         /// The BomEntity (normally a whole Bom document)
         /// which was walked and reported here.
         /// </summary>
-        private BomEntity bomRoot;
+        public BomEntity bomRoot { get; private set; }
 
         /// <summary>
         /// Populated by GetBomRefsInContainers(),
@@ -1406,7 +1406,7 @@ namespace CycloneDX.Models
         /// does have a cost (~5% for a larger 20s run).
         /// </summary>
         #pragma warning disable S3052
-        private bool debugPerformance { get; set; } = false;
+        public bool debugPerformance { get; set; } = false;
         #pragma warning restore S3052
 
         /// <summary>
@@ -1422,6 +1422,12 @@ namespace CycloneDX.Models
         // Helpers for performance accounting - how hard
         // was it to discover the information in this
         // BomWalkResult object?
+        // TOTHINK: Expose these values directly, for
+        // very curious callers (for whom ToString()
+        // would not suffice)?
+        // * Use public getter/private setter? or...
+        // * Method to export a Dictionary of values,
+        //   including a momentary reading of stopwatch?
         private int sbeCountMethodEnter { get; set; }
         private int sbeCountMethodQuickExit { get; set; }
         private int sbeCountPropInfoEnter { get; set; }
@@ -2140,16 +2146,6 @@ namespace CycloneDX.Models
             {
                 stopWatchWalkTotal.Stop();
             }
-        }
-
-        public BomEntity GetBomRoot()
-        {
-            return bomRoot;
-        }
-
-        public void SetBomRoot(BomEntity be)
-        {
-            bomRoot = be;
         }
 
         /// <summary>

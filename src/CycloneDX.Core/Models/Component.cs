@@ -235,7 +235,7 @@ namespace CycloneDX.Models
             // for many computer-generated BOMs the "bom-ref" is representative.
             // Notably, we care about BomRef because we might refer to this
             // entity from others in the same document (e.g. Dependencies[]),
-            // and BOM references are done by this value.
+            // and (inter-)BOM references are done by this value.
             // NOTE: If two otherwise identical components are refferred to
             // by different BomRef values - so be it, Bom duplicates remain.
             // TODO: Refactor various code (likely MergeWith, maybe others)
