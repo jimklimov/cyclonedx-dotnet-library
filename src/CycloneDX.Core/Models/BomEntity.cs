@@ -1416,7 +1416,7 @@ namespace CycloneDX.Models
         /// are properly marked with interfaces they should implement.
         /// </summary>
         #pragma warning disable S3052
-        private bool fallbackNonInterface { get; set; } = false;
+        public bool fallbackNonInterface { get; set; } = false;
         #pragma warning restore S3052
 
         // Helpers for performance accounting - how hard
