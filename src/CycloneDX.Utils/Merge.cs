@@ -191,6 +191,12 @@ namespace CycloneDX.Utils
 
                         string containedBomRef1 = contained1.GetBomRef();
                         string containedBomRef2 = contained2.GetBomRef();
+
+                        // Do these Components have "extracorporeal
+                        // properties" such as Dependencies referencing
+                        // them (to describe deps of this component),
+                        // and importantly - does the caller consider
+                        // them so intimately related?
                         // TODO: Here we only know how to care about
                         // Dependencies, but not e.g. Compositions or
                         // other types which might possibly impose

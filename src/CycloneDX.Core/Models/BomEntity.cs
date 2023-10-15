@@ -207,7 +207,11 @@ namespace CycloneDX.Models
         /// of a further component (or generally different
         /// sets of components). Such dependency lists are
         /// not subsets of each other, and entities should
-        /// be renamed before/during merge instead.
+        /// be renamed before/during merge instead. This can
+        /// happen, for example, when a library had one set
+        /// of dependency versions used during build, and
+        /// another one actually used when it is linked
+        /// into a larger program later.
         /// </summary>
         public bool mergeSubsetDependencies { get; set; }
 
@@ -1448,8 +1452,10 @@ namespace CycloneDX.Models
         /// keys are "Ref" or equivalent string values
         /// which link back to a "BomRef" hopefully
         /// defined somewhere in the same Bom document
-        /// (but may be dangling, or sometimes co-opted
-        /// with external links to other Bom documents!),
+        /// (for some entity types they may be dangling,
+        /// or sometimes co-opted with external links
+        /// to other Bom documents; others require them
+        /// to be resolvable within the Bom document!),
         /// and values are lists of entities which use
         /// this same "ref" value.
         /// Exposed by GetRefsInContainers().
@@ -2232,10 +2238,12 @@ namespace CycloneDX.Models
         /// <summary>
         /// Provide a Dictionary whose keys are "Ref" or equivalent
         /// string values which link back to a "BomRef" hopefully
-        /// defined somewhere in the same Bom document (but may be
-        /// dangling, or sometimes co-opted with external links to
-        /// other Bom documents!), and whose values are lists of
-        /// BomEntities which use this same "ref" value.
+        /// defined somewhere in the same Bom document (for some
+        /// entity types they may be dangling, or sometimes co-opted
+        /// with external links to other Bom documents; others require
+        /// them to be resolvable within the Bom document!), and whose
+        /// values are lists of BomEntities which use this same "ref"
+        /// property value.
         ///
         /// See also: GetBomRefsInContainers() with similar info
         /// about keys which are BomEntity "containers" and values
@@ -2249,12 +2257,21 @@ namespace CycloneDX.Models
         }
 
         /// <summary>
-        /// A special sepection of entries that are directly items
+        /// A special selection of entries that are directly items
         /// in the Bom.Dependencies[] list, so describe the deps
         /// make-up of a certain "ref"erred entity. A non-trivial
         /// List constrainTypes can limit the dictionary to include
-        /// e.g. only references to Component entities (if defined
-        /// in this Bom document).
+        /// e.g. only references to Component or to Service entities
+        /// (expected to be defined in this Bom document according to
+        /// https://github.com/CycloneDX/specification/discussions/320
+        /// clarification of the spec).
+        ///
+        /// TODO: Discussion referenced above mentioned legacy support
+        /// for nested dependencies (as spelled in XML schema and done
+        /// in the C# class definition), however that is expected to
+        /// be "flattable" to usual entries with unique "ref" property
+        /// values -- at most one dependency set per component/service.
+        /// Currently this possibility is not handled in this method.
         /// </summary>
         /// <returns>null upon error (e.g. this walk is not about a Bom)</returns>
         public Dictionary<String, Dependency> GetRefsInToplevelDependencies(bool requireExistingRef, List<Type> typeConstraints)
