@@ -2285,6 +2285,20 @@ namespace CycloneDX.Models
 
             bool checkTypeConstraints = (typeConstraints != null && typeConstraints.Count > 1);
 
+            Dictionary<BomEntity, BomEntity> dictWithC = null;
+            HashSet<String> knownBomRefs = null;
+            if (checkTypeConstraints || requireExistingRef)
+            {
+                dictWithC = GetBomRefsWithContainer();
+                // Note: snapshot in use; consider some synchronized keyword,
+                // although there is a lot more use for it around here then...
+                knownBomRefs = new HashSet<String>();
+                foreach (var obj in dictWithC.Keys)
+                {
+                    knownBomRefs.Add(obj.GetBomRef());
+                }
+            }
+
             Dictionary<String, Dependency> dict = new Dictionary<String, Dependency>();
             foreach (var (backref, referrers) in dictBackrefs)
             {
@@ -2294,10 +2308,17 @@ namespace CycloneDX.Models
                 }
 
                 BomEntity referred = null;
-                if (checkTypeConstraints || requireExistingRef)
+                if ((checkTypeConstraints || requireExistingRef) && knownBomRefs != null)
                 {
-                    // FIXME: Implement checking that "ref" value
+                    // Implement checking that "ref" value
                     // is known in this Bom document walk.
+                    // Some entity types require this (e.g.
+                    // dependencies MUST refer to components
+                    // or services defined in same document).
+                    if (!(knownBomRefs.Contains(backref)))
+                    {
+                        continue;
+                    }
                 }
 
                 if (requireExistingRef && referred == null)
