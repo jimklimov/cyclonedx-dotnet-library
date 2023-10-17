@@ -261,23 +261,28 @@ namespace CycloneDX.Utils
                                         }
                                         else
                                         {
-                                            // check if ALL items of either one list
-                                            // are present in another
-                                            bool isSubset1 = true;
-                                            bool isSubset2 = true;
-                                            foreach (var tmp in dep1.Dependencies.Except(dep2.Dependencies))
+                                            // Check if ALL items of either ONE list
+                                            // are present in another (not both!)
+                                            IEnumerable<Dependency> listExtra1 = dep1.Dependencies.Except(dep2.Dependencies);
+                                            IEnumerable<Dependency> listExtra2 = dep2.Dependencies.Except(dep1.Dependencies);
+
+                                            // Extra items exist wherever flag is true:
+                                            bool isSubset1 = (listExtra1 != null && listExtra1.Count() > 0);
+                                            bool isSubset2 = (listExtra2 != null && listExtra2.Count() > 0);
+
+                                            // Is there any one list that has everything
+                                            // the other one has?
+                                            canMergeDeps = ((isSubset1 && !isSubset2) || (isSubset2 && !isSubset1));
+
+                                            if (canMergeDeps)
                                             {
-                                                // Extra items exist
-                                                isSubset1 = false;
-                                                break;
+                                                // TODO: What about multiple matching components
+                                                // (e.g. test and production builds detailed in
+                                                // same semi-merged bom1 document, with more info
+                                                // about this component incoming via bom2)?..
+                                                // Pre-enumerate and then append all to all
+                                                // suitable locations?
                                             }
-                                            foreach (var tmp in dep2.Dependencies.Except(dep1.Dependencies))
-                                            {
-                                                // Extra items exist
-                                                isSubset2 = false;
-                                                break;
-                                            }
-                                            canMergeDeps = (isSubset1 || isSubset2);
                                         }
                                     }   // else: listMergeHelperStrategy.mergeSubsetDependencies not enabled
 
