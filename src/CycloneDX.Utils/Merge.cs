@@ -164,11 +164,14 @@ namespace CycloneDX.Utils
                  * a way to put this logic into Bom.MergeWith()
                  * coherently, but for the first shot it is here.
                  */
+                // TODO: If/when we get to renaming Component etc.
+                // entities, don't forget to update keys of this
+                // cache (add/remove or wholly regenerate?)
                 Dictionary<String, Dependency> toplevelDeps1 = bwr1.GetRefsInToplevelDependencies();
                 Dictionary<String, Dependency> toplevelDeps2 = bwr2.GetRefsInToplevelDependencies();
                 foreach (var (contained1, container1) in dictBomrefs1)
                 {
-                    /* FIXME: Here we only know how to care about Components */
+                    // FIXME: Here we only know how to care about Components
                     if (contained1 is null || !(contained1 is Component))
                     {
                         continue;
@@ -197,7 +200,8 @@ namespace CycloneDX.Utils
                         // them (to describe deps of this component),
                         // and importantly - does the caller consider
                         // them so intimately related?
-                        // TODO: Here we only know how to care about
+                        //
+                        // FIXME: Here we only know how to care about
                         // Dependencies, but not e.g. Compositions or
                         // other types which might possibly impose
                         // constraints on the notion of "same-ness"
@@ -231,6 +235,16 @@ namespace CycloneDX.Utils
                             //
                             // In practice however we can see various mixes, see comments for
                             // BomEntityListMergeHelperStrategy.mergeSubsetDependencies toggle.
+                            //
+                            // NOTE: Per XML schema and C# implementation, due to legacy
+                            // support reasons, we can encounter nested dependencies.
+                            // They should however be "flattable" and with unique "ref"
+                            // values then. See CycloneDX.Json.Converters.DependencyConverter
+                            // for practical approach about the null/non-null list vars:
+                            // if the C# list variable is null - it means either lack of
+                            // known dependencies for a known "ref", or just a "dependsOn"
+                            // list item which is one of known dependencies of a "ref" in
+                            // the object which contains this list.
                             if (dep1 != null && dep2 != null && dep1.Dependencies != null && dep2.Dependencies != null)
                             {
                                 if (!(dep1.Equals(dep2)))
@@ -265,7 +279,7 @@ namespace CycloneDX.Utils
                                             }
                                             canMergeDeps = (isSubset1 || isSubset2);
                                         }
-                                    }
+                                    }   // else: listMergeHelperStrategy.mergeSubsetDependencies not enabled
 
                                     // TODO: Pre-enumerate ALL equivalent components on both sides,
                                     // maybe the one counterpart we are looking at now is not the
@@ -282,7 +296,7 @@ namespace CycloneDX.Utils
                                         // FIXME: already "renamed", so no need to throw - this is just for dev visibility...
                                         throw new BomEntityConflictException($"TEST: Different Bom.Dependencies[] entries in the two documents refer to Equivalent entities with different \"ref\" identifiers: {containedBomRef1} and {containedBomRef2}\n\t{dep1.SerializeEntity()}\n\t{dep2.SerializeEntity()}");
                                     }
-                                }
+                                }   // else: dep1.Equals(dep2) already
                             }
                         }
 
