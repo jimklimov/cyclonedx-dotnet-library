@@ -169,6 +169,65 @@ namespace CycloneDX.Utils
                 // cache (add/remove or wholly regenerate?)
                 Dictionary<String, Dependency> toplevelDeps1 = bwr1.GetRefsInToplevelDependencies();
                 Dictionary<String, Dependency> toplevelDeps2 = bwr2.GetRefsInToplevelDependencies();
+
+                // Prepare a helper cache of all Component-specific
+                // IDs (mash required argument values) so we can see
+                // quickly how many equivalents we have to juggle.
+                Dictionary<String, List<Component>> idComponents1 = new Dictionary<String, List<Component>>();
+                Dictionary<String, List<Component>> idComponents2 = new Dictionary<String, List<Component>>();
+                // TODO: Refactor copy-pasta into a method?
+                foreach (var (containedEntity, container1) in dictBomrefs1)
+                {
+                    // FIXME: Here we only know how to care about Components
+                    if (containedEntity is null || !(containedEntity is Component))
+                    {
+                        continue;
+                    }
+                    Component containedComponent = (Component)containedEntity;
+                    // TOTHINK: What to do with null values in some
+                    // attrs? For the purposes of Equivalent() and
+                    // MergeWith() in Component, they are fair game
+                    // for equivalence (even if another is not null -
+                    // we can populate it), if required fields match.
+                    String id = $"{containedComponent.Type}|{containedComponent.Group}|{containedComponent.Name}|{containedComponent.Version}|{containedComponent.Purl}|";
+                    if (!(idComponents1.ContainsKey(id)))
+                    {
+                        idComponents1[id] = new List<Component>();
+                    }
+                    idComponents1[id].Add(containedComponent);
+                }
+
+                foreach (var (containedEntity, container2) in dictBomrefs2)
+                {
+                    // FIXME: Here we only know how to care about Components
+                    if (containedEntity is null || !(containedEntity is Component))
+                    {
+                        continue;
+                    }
+                    Component containedComponent = (Component)containedEntity;
+                    String id = $"{containedComponent.Type}|{containedComponent.Group}|{containedComponent.Name}|{containedComponent.Version}|{containedComponent.Purl}|";
+                    if (!(idComponents2.ContainsKey(id)))
+                    {
+                        idComponents2[id] = new List<Component>();
+                    }
+                    idComponents2[id].Add(containedComponent);
+                }
+
+                if (iDebugLevel >= 4)
+                {
+                    Console.WriteLine("[DEBUG1] idComponents1.ToString():");
+                    foreach (var (id, list) in idComponents1)
+                    {
+                        Console.WriteLine($"[DEBUG1] {id}\t: {list.Count}");
+                    }
+
+                    Console.WriteLine("[DEBUG2] idComponents2.ToString():");
+                    foreach (var (id, list) in idComponents2)
+                    {
+                        Console.WriteLine($"[DEBUG2] {id}\t: {list.Count}");
+                    }
+                }
+
                 foreach (var (contained1, container1) in dictBomrefs1)
                 {
                     // FIXME: Here we only know how to care about Components
