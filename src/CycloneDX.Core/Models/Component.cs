@@ -244,6 +244,7 @@ namespace CycloneDX.Models
             if (this.Type == obj.Type // No nullness check here, or we get: error CS0037: Cannot convert null to 'Component.Classification' because it is a non-nullable value type
             &&  !(this.Name is null) && !(obj.Name is null) && this.Name == obj.Name
             &&  (this.Version is null || obj.Version is null || this.Version == obj.Version)
+            &&  (this.Group is null || obj.Group is null || this.Group == obj.Group)
             &&  (this.Purl is null || obj.Purl is null || this.Purl == obj.Purl)
             //&&  (this.BomRef is null || obj.BomRef is null || this.BomRef == obj.BomRef) // may be even toxic
             )
