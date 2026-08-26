@@ -33,6 +33,9 @@ namespace CycloneDX.Models
     [XmlType("component")]
     [ProtoContract]
     public class Component: IEquatable<Component>, IHasBomRef
+#if NET8_0_OR_GREATER
+        , IMergeable<Component>, IEquivalent<Component>
+#endif
     {
         [ProtoContract]
         public enum Classification

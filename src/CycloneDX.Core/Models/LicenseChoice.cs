@@ -18,6 +18,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq.Expressions;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Xml.Serialization;
 using CycloneDX.Xml;
@@ -28,7 +29,10 @@ namespace CycloneDX.Models
 
 
     [ProtoContract]
-    public class LicenseChoice
+    public class LicenseChoice : IEquatable<LicenseChoice>
+#if NET8_0_OR_GREATER
+        , IMergeable<LicenseChoice>, IEquivalent<LicenseChoice>
+#endif
     {
         [XmlElement("license")]
         [ProtoMember(1)]
@@ -66,6 +70,15 @@ namespace CycloneDX.Models
         public List<Property> Properties { get; set; }
         public bool ShouldSerializeProperties() { return Properties?.Count > 0; }
 
+        public bool Equals(LicenseChoice obj)
+        {
+            return obj != null && JsonSerializer.Serialize(this, Json.Serializer.SerializerOptionsForHash) == JsonSerializer.Serialize(obj, Json.Serializer.SerializerOptionsForHash);
+        }
+
+        public override int GetHashCode()
+        {
+            return JsonSerializer.Serialize(this, Json.Serializer.SerializerOptionsForHash).GetHashCode();
+        }
     }
 
     // This is a workaround to serialize licenses correctly
