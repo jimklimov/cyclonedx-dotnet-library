@@ -327,7 +327,7 @@ namespace CycloneDX.Utils
         /// <returns></returns>
         public static Bom FlatMerge(IEnumerable<Bom> boms)
         {
-            return FlatMerge(boms, null);
+            return FlatMerge(boms, (Component)null);
         }
 
         /// <summary>
@@ -389,6 +389,67 @@ namespace CycloneDX.Utils
 
             return result;
         }
+
+#if NET8_0_OR_GREATER
+        /// <summary>Strategy-aware equivalent of <see cref="FlatMerge(IEnumerable{Bom})"/>.</summary>
+        public static Bom FlatMerge(IEnumerable<Bom> boms, MergeStrategy strategy)
+        {
+            return FlatMerge(boms, null, strategy);
+        }
+
+        /// <summary>Strategy-aware equivalent of <see cref="FlatMerge(IEnumerable{Bom}, Component)"/>.</summary>
+        public static Bom FlatMerge(IEnumerable<Bom> boms, Component bomSubject, MergeStrategy strategy)
+        {
+            strategy ??= MergeStrategy.Default();
+            var result = new Bom();
+
+            foreach (var bom in boms)
+            {
+                result = FlatMerge(result, bom, strategy);
+            }
+
+            if (bomSubject != null)
+            {
+                if (result.Metadata == null)
+                {
+                    result.Metadata = new Metadata();
+                }
+                result.Metadata.Component = bomSubject;
+                result.Metadata.Component.BomRef = ComponentBomRefNamespace(result.Metadata.Component);
+
+                var mainDependency = new Dependency
+                {
+                    Ref = result.Metadata.Component.BomRef,
+                    Dependencies = new List<Dependency>()
+                };
+
+                foreach (var bom in boms)
+                {
+                    if (!(bom.Metadata?.Component is null))
+                    {
+                        mainDependency.Dependencies.Add(new Dependency { Ref = bom.Metadata.Component.BomRef });
+                    }
+                }
+
+                if (result.Dependencies == null)
+                {
+                    result.Dependencies = new List<Dependency>();
+                }
+                result.Dependencies.Add(mainDependency);
+            }
+
+            if (strategy.DoBomMetadataUpdate)
+            {
+                result.BomMetadataUpdate(strategy.DoBomMetadataUpdateNewSerialNumber);
+                if (strategy.DoBomMetadataUpdateReferThisToolkit)
+                {
+                    result.BomMetadataReferThisToolkit();
+                }
+            }
+
+            return result;
+        }
+#endif
 
         /// <summary>
         /// Performs a hierarchical merge for multiple BOMs.
