@@ -71,54 +71,6 @@ namespace CycloneDX.Utils
         }
     }
 
-#if NET8_0_OR_GREATER
-    /// <summary>
-    /// Strategy-aware list merging for any element type implementing
-    /// IEquatable/IEquivalent/IMergeable. This one generic method replaces
-    /// the fork's per-type reflection-driven BomEntityListMergeHelper: the
-    /// same code merges List&lt;Hash&gt;, List&lt;Component&gt;,
-    /// List&lt;OrganizationalContact&gt;, etc., dispatching through real
-    /// interface calls instead of cached MethodInfo/Type lookups.
-    /// </summary>
-    internal static class MergeableListHelper
-    {
-        public static List<T> Merge<T>(List<T> list1, List<T> list2, MergeStrategy strategy)
-            where T : IEquatable<T>, IEquivalent<T>, IMergeable<T>
-        {
-            if (list1 is null) return list2;
-            if (list2 is null) return list1;
-            if (strategy is null || !strategy.UseEntityMerge)
-            {
-                return new ListMergeHelper<T>().Merge(list1, list2);
-            }
-
-            var result = new List<T>(list1);
-            foreach (var incoming in list2)
-            {
-                bool merged = false;
-                for (int i = 0; i < result.Count; i++)
-                {
-                    var existing = result[i];
-                    if (existing.Equals(incoming) || existing.Equivalent(incoming, strategy))
-                    {
-                        if (existing.MergeWith(incoming, strategy))
-                        {
-                            result[i] = existing;
-                            merged = true;
-                            break;
-                        }
-                    }
-                }
-                if (!merged)
-                {
-                    result.Add(incoming);
-                }
-            }
-            return result;
-        }
-    }
-#endif
-
     public static class ListExtensions
     {
         public static void AddRangeIfNotNull<T>(this List<T> list, IEnumerable<T> items)
