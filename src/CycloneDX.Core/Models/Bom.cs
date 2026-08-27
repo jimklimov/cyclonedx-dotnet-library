@@ -218,11 +218,42 @@ namespace CycloneDX.Models
         /// somewhere in the document; <c>false</c> if it was not present
         /// (a non-fatal no-op) or the arguments were invalid.
         /// </returns>
+        /// <exception cref="InvalidOperationException">
+        /// <paramref name="newRef"/> is already used as a bom-ref identifier
+        /// or back-reference somewhere else in this document. Renaming
+        /// anyway would silently make two different entities share one
+        /// bom-ref (or repoint an existing back-reference at the wrong
+        /// entity) -- refused rather than done.
+        /// </exception>
         public bool RenameRef(string oldRef, string newRef)
         {
             if (string.IsNullOrEmpty(oldRef) || string.IsNullOrEmpty(newRef) || oldRef == newRef)
             {
                 return false;
+            }
+
+            // Read-only pass (rewrite function returns its input unchanged,
+            // just records it) to check for a collision before touching
+            // anything -- reuses the same traversal RewriteRefs uses for
+            // the real rewrite, so "what counts as a ref" can't drift
+            // between the check and the actual rename.
+            var existingRefs = new HashSet<string>();
+            BomRefWalker.RewriteRefs(this, r =>
+            {
+                if (!string.IsNullOrEmpty(r))
+                {
+                    existingRefs.Add(r);
+                }
+                return r;
+            });
+
+            if (!existingRefs.Contains(oldRef))
+            {
+                return false;
+            }
+            if (existingRefs.Contains(newRef))
+            {
+                throw new InvalidOperationException($"Cannot rename \"{oldRef}\" to \"{newRef}\": \"{newRef}\" is already used as a bom-ref (or a reference to one) elsewhere in this document.");
             }
 
             bool found = false;
