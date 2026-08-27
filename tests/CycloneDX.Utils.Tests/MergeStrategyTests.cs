@@ -145,6 +145,158 @@ namespace CycloneDX.Utils.Tests
 
             Assert.False(bom.RenameRef("missing-ref", "new-ref"));
         }
+
+        [Fact]
+        public void BomRenameRef_Throws_WhenNewRefAlreadyInUse()
+        {
+            var bom = new Bom
+            {
+                Components = new List<Component>
+                {
+                    new Component { Name = "left-pad", BomRef = "old-ref" },
+                    new Component { Name = "right-pad", BomRef = "already-taken" }
+                }
+            };
+
+            Assert.Throws<System.InvalidOperationException>(() => bom.RenameRef("old-ref", "already-taken"));
+            // Refused, so nothing should have been touched.
+            Assert.Equal("old-ref", bom.Components[0].BomRef);
+        }
+
+        [Fact]
+        public void Default_Strategy_UpgradesConflictingScope_ToRequired()
+        {
+            // Locks in the flipped default: a Required-vs-Optional conflict
+            // must not silently downgrade to Optional.
+            Assert.Equal(ComponentConflictResolution.Squash_UpgradeScope, MergeStrategy.Default().ComponentConflictResolution);
+
+            var a = new Component { Name = "left-pad", Version = "1.0.0", Scope = Component.ComponentScope.Required };
+            var b = new Component { Name = "left-pad", Version = "1.0.0", Scope = Component.ComponentScope.Optional };
+
+            Assert.True(a.MergeWith(b, MergeStrategy.Default()));
+            Assert.Equal(Component.ComponentScope.Required, a.Scope);
+        }
+
+        [Fact]
+        public void Squash_DowngradeScope_PrefersOptionalOverRequired()
+        {
+            var strategy = MergeStrategy.Default();
+            strategy.ComponentConflictResolution = ComponentConflictResolution.Squash_DowngradeScope;
+
+            var a = new Component { Name = "left-pad", Version = "1.0.0", Scope = Component.ComponentScope.Required };
+            var b = new Component { Name = "left-pad", Version = "1.0.0", Scope = Component.ComponentScope.Optional };
+
+            Assert.True(a.MergeWith(b, strategy));
+            Assert.Equal(Component.ComponentScope.Optional, a.Scope);
+        }
+
+        [Fact]
+        public void Dependency_MergeWith_UnionsSubsetDependsOnLists()
+        {
+            var a = new Dependency { Ref = "app", Dependencies = new List<Dependency> { new Dependency { Ref = "lib-a" } } };
+            var b = new Dependency { Ref = "app", Dependencies = new List<Dependency> { new Dependency { Ref = "lib-b" } } };
+
+            Assert.True(a.MergeWith(b, MergeStrategy.Default()));
+            Assert.Equal(2, a.Dependencies.Count);
+            Assert.Contains(a.Dependencies, d => d.Ref == "lib-a");
+            Assert.Contains(a.Dependencies, d => d.Ref == "lib-b");
+        }
+
+        [Fact]
+        public void Dependency_MergeWith_RefusesDiffering_WhenSubsetMergeDisabled()
+        {
+            var strategy = MergeStrategy.Default();
+            strategy.MergeSubsetDependencies = false;
+
+            var a = new Dependency { Ref = "app", Dependencies = new List<Dependency> { new Dependency { Ref = "lib-a" } } };
+            var b = new Dependency { Ref = "app", Dependencies = new List<Dependency> { new Dependency { Ref = "lib-b" } } };
+
+            Assert.False(a.MergeWith(b, strategy));
+        }
+
+        [Fact]
+        public void FlatMerge_RenameByScope_SplitsConflictingComponentsAndFixesUpBackReferences()
+        {
+            var strategy = MergeStrategy.Default();
+            strategy.ComponentConflictResolution = ComponentConflictResolution.Squash_RenameByScope;
+
+            var bom1 = new Bom
+            {
+                Components = new List<Component>
+                {
+                    new Component { Name = "left-pad", Version = "1.0.0", BomRef = "lp", Scope = Component.ComponentScope.Required }
+                },
+                Dependencies = new List<Dependency> { new Dependency { Ref = "lp" } }
+            };
+            var bom2 = new Bom
+            {
+                Components = new List<Component>
+                {
+                    new Component { Name = "left-pad", Version = "1.0.0", BomRef = "lp", Scope = Component.ComponentScope.Excluded }
+                },
+                Dependencies = new List<Dependency> { new Dependency { Ref = "lp" } }
+            };
+
+            var result = CycloneDXUtils.FlatMerge(bom1, bom2, strategy);
+
+            Assert.Equal(2, result.Components.Count);
+            var required = Assert.Single(result.Components, c => c.Scope == Component.ComponentScope.Required);
+            var excluded = Assert.Single(result.Components, c => c.Scope == Component.ComponentScope.Excluded);
+            Assert.Equal("lp:scope=Required", required.BomRef);
+            Assert.Equal("lp:scope=Excluded", excluded.BomRef);
+
+            Assert.Equal(2, result.Dependencies.Count);
+            Assert.Contains(result.Dependencies, d => d.Ref == "lp:scope=Required");
+            Assert.Contains(result.Dependencies, d => d.Ref == "lp:scope=Excluded");
+        }
+
+        [Fact]
+        public void FlatMerge_RenameByScope_DoesNotSuffixWhenAllSourcesAgree()
+        {
+            var strategy = MergeStrategy.Default();
+            strategy.ComponentConflictResolution = ComponentConflictResolution.Squash_RenameByScope;
+
+            var bom1 = new Bom
+            {
+                Components = new List<Component> { new Component { Name = "left-pad", Version = "1.0.0", BomRef = "lp", Scope = Component.ComponentScope.Required } }
+            };
+            var bom2 = new Bom
+            {
+                Components = new List<Component> { new Component { Name = "left-pad", Version = "1.0.0", BomRef = "lp", Scope = Component.ComponentScope.Required, Description = "pads strings" } }
+            };
+
+            var result = CycloneDXUtils.FlatMerge(bom1, bom2, strategy);
+
+            var merged = Assert.Single(result.Components);
+            Assert.Equal("lp", merged.BomRef);
+            Assert.Equal("pads strings", merged.Description);
+        }
+
+        [Fact]
+        public void FlatMerge_RenameByScope_ThirdCopySquashesIntoExistingPartition()
+        {
+            var strategy = MergeStrategy.Default();
+            strategy.ComponentConflictResolution = ComponentConflictResolution.Squash_RenameByScope;
+
+            var bom1 = new Bom
+            {
+                Components = new List<Component> { new Component { Name = "left-pad", Version = "1.0.0", BomRef = "lp", Scope = Component.ComponentScope.Required } }
+            };
+            var bom2 = new Bom
+            {
+                Components = new List<Component> { new Component { Name = "left-pad", Version = "1.0.0", BomRef = "lp", Scope = Component.ComponentScope.Excluded } }
+            };
+            var bom3 = new Bom
+            {
+                Components = new List<Component> { new Component { Name = "left-pad", Version = "1.0.0", BomRef = "lp", Scope = Component.ComponentScope.Required, Copyright = "2024 Acme" } }
+            };
+
+            var result = CycloneDXUtils.FlatMerge(new[] { bom1, bom2, bom3 }, strategy);
+
+            Assert.Equal(2, result.Components.Count);
+            var required = Assert.Single(result.Components, c => c.Scope == Component.ComponentScope.Required);
+            Assert.Equal("2024 Acme", required.Copyright);
+        }
     }
 }
 #endif
