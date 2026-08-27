@@ -110,22 +110,50 @@ gated and absent from that target, unchanged from before):
   fixed-behavior overloads (which are unchanged, so existing callers see
   no behavior change).
 
-**Known gaps**, called out rather than silently dropped:
-- `MergeSubsetDependencies` strategy flag exists but isn't wired to real
-  subset-detection logic yet — `Dependency` still only merges via its
-  `IMergeable<T>` default (exact equality).
-- `ComponentConflictResolution.RenameByScope` (keep two scope-conflicting
-  components as distinct renamed entries instead of squashing/refusing) is
-  a reserved enum case, not yet implemented — see its XML doc and the
-  `Merge.cs` orchestration comments for the intended pre-merge-pass
-  approach, which reuses `BomRefWalker` as-is.
+**Fixed after initial review** (a second pass caught real behavior
+differences from the old fork, not just missing features — worth reading
+if you're relying on this):
+- The *default* scope-conflict resolution originally landed backwards: the
+  old fork's actual code always widened a Required-vs-Optional conflict to
+  Required, but this port's first-draft default did the opposite (picked
+  Optional) — a live behavior regression for `cyclonedx merge`, not just an
+  internal detail. Fixed: `MergeStrategy.Default()` now uses
+  `Squash_UpgradeScope`; the narrower reading is still available as
+  `Squash_DowngradeScope` (renamed from `Squash` for clarity against its
+  contrast).
+- `Bom.RenameRef` used to silently rewrite `oldRef` to `newRef` even if
+  `newRef` already identified something else in the document, potentially
+  making two entities share one bom-ref. Now does a read-only collision
+  check first and throws `InvalidOperationException` instead.
+- `Dependency` now has a real `Equivalent`/`MergeWith` (matches on `Ref`,
+  unions the two `Dependencies` sub-lists, gated by
+  `MergeSubsetDependencies`) — previously it only had the `IMergeable<T>`
+  default (exact equality), so two BOMs describing the same component with
+  different direct-dependency lists would each contribute their own
+  `<dependency ref="X">` entry instead of one combined entry. This is a
+  separate code path from the `RenameRef` fix above (list-merge vs.
+  rename-walker) — fixing one doesn't fix the other.
+- `ComponentConflictResolution.Squash_RenameByScope` is now implemented:
+  when two `Equivalent` components differ in `Scope`, they're kept as
+  distinct entries suffixed `:scope=<value>` (e.g. `lp:scope=Required` /
+  `lp:scope=Excluded`) instead of squashed or refused, with every
+  back-reference rewritten to match. No suffix is added unless a real
+  conflict appears — if every source agrees on `Scope`, the bom-ref is
+  untouched. This is a genuinely new feature (the old fork's same-named
+  toggle was never actually wired the way its own docs described), landed
+  as its own commit. See `ApplyRenameByScope` in `Merge.cs`.
+
+**Still-known gaps**:
 - `BomRefWalker` covers the same entities the fork covered three years ago
   (`Metadata.Component`, `Components`, `Services`, `Dependencies`,
   `Compositions`, `Vulnerabilities`, `Annotations`) — not yet the newer
-  (1.6) `Declarations`/`Definitions` sections.
-- `Bom.RenameRef` does a straight rewrite pass; unlike the fork's
-  `BomWalkResult`-based rename, it does not separately detect a
-  pre-existing duplicate bom-ref as its own error case.
+  (1.6) `Declarations`/`Definitions` sections. Not a regression (the fork
+  never had these either, they postdate it), just a current limitation.
+- CLI exposes `--component-conflict-resolution` (see the CLI README) but
+  no other `MergeStrategy` toggle (`UseEntityMerge`,
+  `RenameConflictingComponents`, `MergeSubsetDependencies`,
+  `TreatDependencyAsExtraProperty`, the `DoBomMetadataUpdate*` group) is
+  CLI-selectable yet — all still hardcoded via `MergeStrategy.Default()`.
 
 ## 4. Pack & publish to the local feed
 
@@ -135,7 +163,7 @@ version this fork also reports — pack under a version that only exists
 locally:
 
 ```sh
-LIBVER=12.1.2.1-privateBuild.20260827   # bump the trailing counter each rebuild
+LIBVER=12.1.2.2-privateBuild.20260827   # bump the trailing counter each rebuild
 dotnet pack CycloneDXLibrary.sln -c Debug -p:Version="$LIBVER"
 for P in src/CycloneDX.Core/bin/Debug/CycloneDX.Core.$LIBVER.nupkg \
          src/CycloneDX.Utils/bin/Debug/CycloneDX.Utils.$LIBVER.nupkg \
@@ -155,9 +183,12 @@ done
 dotnet test CycloneDXLibrary.sln --framework net10.0
 ```
 
-`CycloneDX.Utils.Tests` (includes the new `MergeStrategyTests.cs`, 10
-focused unit tests covering `Component`/`Hash` merge logic, strategy-aware
-`FlatMerge`, and `Bom.RenameRef`): **35/35 passed.**
+`CycloneDX.Utils.Tests` (includes `MergeStrategyTests.cs`, 18 focused unit
+tests covering `Component`/`Hash`/`Dependency` merge logic, the flipped
+default scope resolution, `RenameRef` collision refusal, strategy-aware
+`FlatMerge`, and three `Squash_RenameByScope` scenarios including the
+back-reference-fixup regression a test caught mid-implementation):
+**43/43 passed.**
 `CycloneDX.Spdx.Tests`/`CycloneDX.Spdx.Interop.Tests`: all passed.
 `CycloneDX.Core.Tests`: ~300 failures, **all** in `Protobuf.*` serialization/
 validation tests — confirmed unrelated to this work (nothing touched here
