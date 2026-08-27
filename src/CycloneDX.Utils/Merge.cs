@@ -196,7 +196,12 @@ namespace CycloneDX.Utils
 
             if (strategy.RenameConflictingComponents)
             {
-                RenameBomRefCollisions(bom1, bom2);
+                RenameBomRefCollisions(bom1, bom2, strategy);
+            }
+
+            if (strategy.ComponentConflictResolution == ComponentConflictResolution.Squash_RenameByScope)
+            {
+                ApplyRenameByScope(bom1, bom2, strategy);
             }
 
             var result = new Bom();
@@ -286,7 +291,7 @@ namespace CycloneDX.Utils
         /// so the merged document never ends up with one bom-ref value
         /// silently pointing at two unrelated components.
         /// </summary>
-        private static void RenameBomRefCollisions(Bom bom1, Bom bom2)
+        private static void RenameBomRefCollisions(Bom bom1, Bom bom2, MergeStrategy strategy)
         {
             if (bom1?.Components is null || bom2?.Components is null)
             {
@@ -303,11 +308,112 @@ namespace CycloneDX.Utils
                 {
                     if (c2.BomRef == c1.BomRef && !c1.Equals(c2))
                     {
+                        if (strategy.ComponentConflictResolution == ComponentConflictResolution.Squash_RenameByScope
+                            && c1.Equivalent(c2, strategy))
+                        {
+                            // Same real-world identity, differing only by
+                            // (at least) Scope -- ApplyRenameByScope handles
+                            // this case precisely (predictable :scope=...
+                            // suffixes); don't let this blunter same-bomref
+                            // check rename it first with a ":2" suffix.
+                            continue;
+                        }
+
                         var conflictingRef = c2.BomRef;
                         var renamedRef = conflictingRef + ":2";
                         BomRefWalker.RewriteRefs(bom2, r => r == conflictingRef ? renamedRef : r);
                     }
                 }
+            }
+        }
+
+        private const string ScopeSuffixMarker = ":scope=";
+
+        private static bool IsScopeSuffixed(string bomRef) =>
+            !string.IsNullOrEmpty(bomRef) && bomRef.Contains(ScopeSuffixMarker, StringComparison.Ordinal);
+
+        private static string BaseRefOf(string bomRef)
+        {
+            if (string.IsNullOrEmpty(bomRef))
+            {
+                return bomRef;
+            }
+            var idx = bomRef.IndexOf(ScopeSuffixMarker, StringComparison.Ordinal);
+            return idx < 0 ? bomRef : bomRef.Substring(0, idx);
+        }
+
+        private static string ScopeSuffixedRef(string baseRef, Component.ComponentScope? scope) =>
+            $"{baseRef}{ScopeSuffixMarker}{(scope.HasValue ? scope.Value.ToString() : "Unspecified")}";
+
+        /// <summary>
+        /// Pre-merge pass for MergeStrategy.ComponentConflictResolution ==
+        /// Squash_RenameByScope: when an incoming component is
+        /// Equivalent (identity match ignoring Scope) to one already
+        /// accumulated but differs in Scope, split them into distinct,
+        /// suffixed bom-refs instead of letting the generic merge either
+        /// squash the Scope away or leave two entries silently sharing one
+        /// bom-ref. Only touches bom-refs once an actual conflict appears:
+        /// if every source agrees on Scope for a given identity, no suffix
+        /// is ever added. Mutates bom1 (retroactively, for the first-ever
+        /// split of a given identity -- cascading to its already-recorded
+        /// back-references) and bom2 (so its own back-references follow
+        /// whatever bom-ref its components end up merging under) in place.
+        /// </summary>
+        private static void ApplyRenameByScope(Bom bom1, Bom bom2, MergeStrategy strategy)
+        {
+            if (bom1?.Components is null || bom2?.Components is null)
+            {
+                return;
+            }
+
+            foreach (var incoming in bom2.Components.ToList())
+            {
+                if (string.IsNullOrEmpty(incoming.BomRef))
+                {
+                    continue;
+                }
+
+                var matches = bom1.Components.Where(e => e.Equivalent(incoming, strategy)).ToList();
+                if (matches.Count == 0)
+                {
+                    // First time this identity has been seen -- nothing to
+                    // rename (yet); it'll be added as-is by the generic merge.
+                    continue;
+                }
+
+                var sameScope = matches.FirstOrDefault(e => e.Scope == incoming.Scope);
+                if (sameScope != null)
+                {
+                    // Will squash into sameScope during the generic merge
+                    // below; make sure bom2's own back-refs to `incoming`
+                    // already point at the bom-ref it's about to be merged
+                    // under (which may itself be suffixed from an earlier fold).
+                    if (!string.IsNullOrEmpty(sameScope.BomRef) && sameScope.BomRef != incoming.BomRef)
+                    {
+                        var oldRef = incoming.BomRef;
+                        var targetRef = sameScope.BomRef;
+                        BomRefWalker.RewriteRefs(bom2, r => r == oldRef ? targetRef : r);
+                    }
+                    continue;
+                }
+
+                // incoming's Scope doesn't match any existing partition for
+                // this identity -- it's a new partition.
+                var baseRef = BaseRefOf(matches[0].BomRef);
+                if (matches.Count == 1 && !IsScopeSuffixed(matches[0].BomRef))
+                {
+                    // First-ever split for this identity: retroactively
+                    // suffix the already-accumulated entry too, cascading to
+                    // its back-references already recorded in bom1.
+                    var existing = matches[0];
+                    var existingOldRef = existing.BomRef;
+                    var existingNewRef = ScopeSuffixedRef(baseRef, existing.Scope);
+                    BomRefWalker.RewriteRefs(bom1, r => r == existingOldRef ? existingNewRef : r);
+                }
+
+                var incomingOldRef = incoming.BomRef;
+                var incomingNewRef = ScopeSuffixedRef(baseRef, incoming.Scope);
+                BomRefWalker.RewriteRefs(bom2, r => r == incomingOldRef ? incomingNewRef : r);
             }
         }
 #endif
