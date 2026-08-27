@@ -32,28 +32,36 @@ namespace CycloneDX.Models
 
         /// <summary>
         /// Merge reconcilable fields into one entry. If <c>Scope</c> differs,
-        /// prefer keeping it unset/optional over silently widening it -- see
-        /// <see cref="ComponentConflictResolution.SquashUpgradeScope"/> for
-        /// the alternative.
+        /// the more permissive value wins (e.g. "required" beats "optional")
+        /// -- the spec's own guidance is that an absent/ambiguous Scope
+        /// SHOULD be treated as required, so this errs toward not
+        /// under-reporting a dependency that's required somewhere. This is
+        /// the default: it can produce more false-positive "required"
+        /// warnings downstream than <see cref="Squash_DowngradeScope"/>, but
+        /// won't silently downgrade a genuinely required dependency to
+        /// merely optional.
         /// </summary>
-        Squash,
+        Squash_UpgradeScope,
 
         /// <summary>
-        /// Same as <see cref="Squash"/>, but when <c>Scope</c> differs
-        /// between the two, the more permissive value wins (e.g. "required"
-        /// beats "optional").
+        /// Same as <see cref="Squash_UpgradeScope"/>, but when <c>Scope</c>
+        /// differs, prefer keeping it unset/optional over widening it.
         /// </summary>
-        SquashUpgradeScope,
+        Squash_DowngradeScope,
 
         /// <summary>
-        /// Reserved for a future strategy: when two equivalent components
-        /// differ only by <c>Scope</c>, keep both as distinct entries by
-        /// renaming one's (or both's) <c>bom-ref</c> with a scope-derived
-        /// suffix (and rewriting back-references accordingly) instead of
-        /// squashing or discarding either. Not yet implemented -- selecting
-        /// this value currently behaves like <see cref="KeepSeparate"/>.
+        /// When two equivalent components differ only by <c>Scope</c>, don't
+        /// squash or discard either -- keep them as distinct entries by
+        /// suffixing one's (or both's) <c>bom-ref</c> with
+        /// <c>:scope=&lt;value&gt;</c> and rewriting back-references
+        /// accordingly, so e.g. "required for production" and "excluded for
+        /// tests" both survive the merge intact. Non-Scope fields still
+        /// squash normally within each scope partition. The original,
+        /// unsuffixed bom-ref is kept for whichever scope was seen first;
+        /// suffixes only appear once an actual conflict shows up, so a
+        /// document where every source agrees on Scope is unaffected.
         /// </summary>
-        RenameByScope,
+        Squash_RenameByScope,
     }
 
     /// <summary>
@@ -130,7 +138,7 @@ namespace CycloneDX.Models
                 RenameConflictingComponents = true,
                 MergeSubsetDependencies = true,
                 TreatDependencyAsExtraProperty = true,
-                ComponentConflictResolution = ComponentConflictResolution.Squash,
+                ComponentConflictResolution = ComponentConflictResolution.Squash_UpgradeScope,
                 DoBomMetadataUpdate = false,
                 DoBomMetadataUpdateNewSerialNumber = false,
                 DoBomMetadataUpdateReferThisToolkit = false,

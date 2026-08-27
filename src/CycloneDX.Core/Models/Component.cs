@@ -458,6 +458,19 @@ namespace CycloneDX.Models
                 return true;
             }
 
+            if (resolution == ComponentConflictResolution.Squash_RenameByScope)
+            {
+                // Scope partitioning under this strategy is handled by a
+                // dedicated pre-pass (CycloneDXUtils' RenameByScope pass)
+                // that splits differently-scoped components into separate,
+                // suffixed bom-refs *before* the generic per-field merge
+                // ever runs -- so by the time two Components reach here with
+                // different Scope values, they should not be merged at all;
+                // treat it as a refusal rather than silently squashing.
+                merged = null;
+                return false;
+            }
+
             bool aExcluded = a == ComponentScope.Excluded;
             bool bExcluded = b == ComponentScope.Excluded;
 
@@ -466,10 +479,10 @@ namespace CycloneDX.Models
                 // Neither side excludes the component. Per the spec, an absent
                 // (null/unset) Scope SHOULD be treated as required -- so unless
                 // both sides agree on "optional", the safe reading is whichever
-                // is more inclusive. SquashUpgradeScope always resolves to
-                // Required; plain Squash keeps the narrower "optional" reading
-                // when either side actually said so.
-                merged = resolution == ComponentConflictResolution.SquashUpgradeScope
+                // is more inclusive. Squash_UpgradeScope (the default) always
+                // resolves to Required; Squash_DowngradeScope keeps the
+                // narrower "optional" reading when either side actually said so.
+                merged = resolution == ComponentConflictResolution.Squash_UpgradeScope
                     ? ComponentScope.Required
                     : (a == ComponentScope.Optional || b == ComponentScope.Optional)
                         ? ComponentScope.Optional
