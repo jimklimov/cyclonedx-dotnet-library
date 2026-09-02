@@ -544,6 +544,9 @@ namespace CycloneDX.Utils
                 result.Dependencies.Add(mainDependency);
             }
 
+            result = CleanupMetadataComponent(result, strategy);
+            result = CleanupEmptyLists(result);
+
             if (strategy.DoBomMetadataUpdate)
             {
                 result.BomMetadataUpdate(strategy.DoBomMetadataUpdateNewSerialNumber);
@@ -552,6 +555,61 @@ namespace CycloneDX.Utils
                     result.BomMetadataReferThisToolkit();
                 }
             }
+
+            return result;
+        }
+
+        /// <summary>
+        /// If the document's Metadata.Component shares a bom-ref with an
+        /// entry already present in its top-level Components list, merge
+        /// that entry into Metadata.Component and remove it from
+        /// Components. A bom-ref must be unique within a document, and the
+        /// subject of a BOM is not also one of its own components.
+        /// </summary>
+        public static Bom CleanupMetadataComponent(Bom result, MergeStrategy strategy = null)
+        {
+            var subject = result?.Metadata?.Component;
+            if (subject is null || string.IsNullOrEmpty(subject.BomRef) || result.Components is null)
+            {
+                return result;
+            }
+
+            var duplicate = result.Components.Find(c => c != null && c.BomRef == subject.BomRef);
+            if (duplicate != null)
+            {
+                // Best-effort: fold in whatever fields duplicate carries that
+                // subject doesn't. If the two aren't otherwise Equivalent
+                // (e.g. a malformed document where the same bom-ref was
+                // reused for something else entirely) MergeWith simply
+                // declines and subject is left as-is -- either way, the
+                // duplicate bom-ref cannot remain in Components.
+                subject.MergeWith(duplicate, strategy ?? MergeStrategy.Default());
+                result.Components.Remove(duplicate);
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Replaces empty top-level list properties with null, so a
+        /// serialized document doesn't carry e.g. an empty "components": []
+        /// for a section that ended up with nothing in it after merging.
+        /// </summary>
+        public static Bom CleanupEmptyLists(Bom result)
+        {
+            if (result is null)
+            {
+                return result;
+            }
+
+            if (result.Metadata?.Tools?.Tools?.Count == 0) result.Metadata.Tools.Tools = null;
+            if (result.Components?.Count == 0) result.Components = null;
+            if (result.Services?.Count == 0) result.Services = null;
+            if (result.ExternalReferences?.Count == 0) result.ExternalReferences = null;
+            if (result.Dependencies?.Count == 0) result.Dependencies = null;
+            if (result.Compositions?.Count == 0) result.Compositions = null;
+            if (result.Vulnerabilities?.Count == 0) result.Vulnerabilities = null;
+            if (result.Annotations?.Count == 0) result.Annotations = null;
 
             return result;
         }
@@ -809,6 +867,9 @@ namespace CycloneDX.Utils
         {
             strategy ??= MergeStrategy.Default();
             var result = HierarchicalMerge(boms, bomSubject);
+
+            result = CleanupMetadataComponent(result, strategy);
+            result = CleanupEmptyLists(result);
 
             if (strategy.DoBomMetadataUpdate)
             {
