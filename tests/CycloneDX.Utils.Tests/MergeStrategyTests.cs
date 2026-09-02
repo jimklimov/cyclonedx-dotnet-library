@@ -297,6 +297,60 @@ namespace CycloneDX.Utils.Tests
             var required = Assert.Single(result.Components, c => c.Scope == Component.ComponentScope.Required);
             Assert.Equal("2024 Acme", required.Copyright);
         }
+
+        [Fact]
+        public void CleanupMetadataComponent_RemovesDuplicateAndMergesFields()
+        {
+            var subject = new Component { Name = "app", Version = "1", BomRef = "app-ref" };
+            var duplicate = new Component { Name = "app", Version = "1", BomRef = "app-ref", Description = "the app" };
+            var other = new Component { Name = "lib", Version = "1", BomRef = "lib-ref" };
+            var bom = new Bom
+            {
+                Metadata = new Metadata { Component = subject },
+                Components = new List<Component> { duplicate, other }
+            };
+
+            var result = CycloneDXUtils.CleanupMetadataComponent(bom);
+
+            Assert.Single(result.Components);
+            Assert.Same(other, result.Components[0]);
+            Assert.Equal("the app", result.Metadata.Component.Description);
+        }
+
+        [Fact]
+        public void CleanupMetadataComponent_NoOp_WhenNoDuplicate()
+        {
+            var subject = new Component { Name = "app", Version = "1", BomRef = "app-ref" };
+            var other = new Component { Name = "lib", Version = "1", BomRef = "lib-ref" };
+            var bom = new Bom
+            {
+                Metadata = new Metadata { Component = subject },
+                Components = new List<Component> { other }
+            };
+
+            var result = CycloneDXUtils.CleanupMetadataComponent(bom);
+
+            Assert.Single(result.Components);
+            Assert.Same(other, result.Components[0]);
+        }
+
+        [Fact]
+        public void CleanupEmptyLists_ReplacesEmptyListsWithNull()
+        {
+            var bom = new Bom
+            {
+                Components = new List<Component>(),
+                Services = new List<Service> { new Service { Name = "svc" } },
+                Dependencies = new List<Dependency>(),
+            };
+
+            var result = CycloneDXUtils.CleanupEmptyLists(bom);
+
+            Assert.Null(result.Components);
+            Assert.Null(result.Dependencies);
+            Assert.NotNull(result.Services);
+            Assert.Single(result.Services);
+        }
     }
 }
 #endif
