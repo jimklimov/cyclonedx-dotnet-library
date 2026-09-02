@@ -108,7 +108,11 @@ gated and absent from that target, unchanged from before):
   `HierarchicalMerge(..., MergeStrategy)` overloads in
   `src/CycloneDX.Utils/Merge.cs`, additive alongside the existing
   fixed-behavior overloads (which are unchanged, so existing callers see
-  no behavior change).
+  no behavior change). Both also call `CleanupMetadataComponent` (evicts a
+  document's `Metadata.Component` if it's also duplicated inside its own
+  `Components` list — a real spec violation two separate merge inputs can
+  produce) and `CleanupEmptyLists` (drops now-empty top-level lists rather
+  than serializing them).
 
 **Fixed after initial review** (a second pass caught real behavior
 differences from the old fork, not just missing features — worth reading
@@ -163,7 +167,7 @@ version this fork also reports — pack under a version that only exists
 locally:
 
 ```sh
-LIBVER=12.1.2.2-privateBuild.20260827   # bump the trailing counter each rebuild
+LIBVER=12.1.2.3-privateBuild.20260902   # bump the trailing counter each rebuild
 dotnet pack CycloneDXLibrary.sln -c Debug -p:Version="$LIBVER"
 for P in src/CycloneDX.Core/bin/Debug/CycloneDX.Core.$LIBVER.nupkg \
          src/CycloneDX.Utils/bin/Debug/CycloneDX.Utils.$LIBVER.nupkg \
@@ -188,7 +192,7 @@ tests covering `Component`/`Hash`/`Dependency` merge logic, the flipped
 default scope resolution, `RenameRef` collision refusal, strategy-aware
 `FlatMerge`, and three `Squash_RenameByScope` scenarios including the
 back-reference-fixup regression a test caught mid-implementation):
-**43/43 passed.**
+**46/46 passed.**
 `CycloneDX.Spdx.Tests`/`CycloneDX.Spdx.Interop.Tests`: all passed.
 `CycloneDX.Core.Tests`: ~300 failures, **all** in `Protobuf.*` serialization/
 validation tests — confirmed unrelated to this work (nothing touched here
