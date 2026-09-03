@@ -326,23 +326,45 @@ namespace CycloneDX.Utils
                 }
                 foreach (var c2 in bom2.Components)
                 {
-                    if (c2.BomRef == c1.BomRef && !c1.Equals(c2))
+                    if (c2.BomRef != c1.BomRef || c1.Equals(c2))
                     {
-                        if (strategy.ComponentConflictResolution == ComponentConflictResolution.Squash_RenameByScope
-                            && c1.Equivalent(c2, strategy))
-                        {
-                            // Same real-world identity, differing only by
-                            // (at least) Scope -- ApplyRenameByScope handles
-                            // this case precisely (predictable :scope=...
-                            // suffixes); don't let this blunter same-bomref
-                            // check rename it first with a ":2" suffix.
-                            continue;
-                        }
-
-                        var conflictingRef = c2.BomRef;
-                        var renamedRef = conflictingRef + ":2";
-                        BomRefWalker.RewriteRefs(bom2, r => r == conflictingRef ? renamedRef : r);
+                        continue;
                     }
+
+                    if (strategy.ComponentConflictResolution == ComponentConflictResolution.Squash_RenameByScope
+                        && c1.Equivalent(c2, strategy))
+                    {
+                        // Same real-world identity, differing only by
+                        // (at least) Scope -- ApplyRenameByScope handles
+                        // this case precisely (predictable :scope=...
+                        // suffixes); don't let this blunter same-bomref
+                        // check rename it first with a ":2" suffix.
+                        continue;
+                    }
+
+                    // The generic Components merge (MergeableListHelper.Merge,
+                    // via Equivalent()/MergeWith()) is bom-ref-blind: if it's
+                    // going to fold c2 into c1 successfully anyway, renaming
+                    // c2's bom-ref here first would only leave a dangling
+                    // reference behind -- the rename propagates into c2's own
+                    // dependency graph, but the merged Components list ends
+                    // up with just c1's (unrenamed) bom-ref once MergeWith
+                    // succeeds. Only rename when the merge would actually
+                    // refuse and leave both entries in place, mirroring
+                    // Component.MergeWith's own refusal conditions exactly
+                    // (KeepSeparate always refuses; otherwise only a genuine
+                    // Scope conflict does).
+                    var mergeWouldSucceed = c1.Equivalent(c2, strategy)
+                        && strategy.ComponentConflictResolution != ComponentConflictResolution.KeepSeparate
+                        && Component.TryMergeScope(c1.Scope, c2.Scope, strategy.ComponentConflictResolution, out _);
+                    if (mergeWouldSucceed)
+                    {
+                        continue;
+                    }
+
+                    var conflictingRef = c2.BomRef;
+                    var renamedRef = conflictingRef + ":2";
+                    BomRefWalker.RewriteRefs(bom2, r => r == conflictingRef ? renamedRef : r);
                 }
             }
         }

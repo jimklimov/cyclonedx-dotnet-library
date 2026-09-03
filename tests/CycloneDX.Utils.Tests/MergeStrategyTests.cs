@@ -154,6 +154,68 @@ namespace CycloneDX.Utils.Tests
         }
 
         [Fact]
+        public void FlatMerge_WithStrategy_DoesNotRenameEquivalentComponentsAboutToBeSquashed()
+        {
+            // Two source BOMs each depend on the same real-world package,
+            // sharing its bom-ref, but recorded slightly different details
+            // for it (no Scope conflict) -- moduleA's copy has hashes,
+            // moduleB's has a description. RenameConflictingComponents must
+            // not rename either copy here: the generic Components merge is
+            // going to fold them into one entry anyway (Equivalent, no
+            // conflict under the default resolution), and renaming first
+            // would leave moduleB's own dependsOn entry pointing at a
+            // bom-ref no component ends up carrying.
+            const string jackRef = "pkg:maven/example/jackson@1.0.0";
+            var moduleABom = new Bom
+            {
+                Metadata = new Metadata { Component = new Component { Name = "moduleA" } },
+                Components = new List<Component>
+                {
+                    new Component { Name = "jackson", Version = "1.0.0", Purl = jackRef, BomRef = jackRef, Hashes = new List<Hash> { new Hash { Alg = Hash.HashAlgorithm.SHA_256, Content = "aaaa" } } }
+                },
+                Dependencies = new List<Dependency>
+                {
+                    new Dependency { Ref = "moduleA", Dependencies = new List<Dependency> { new Dependency { Ref = jackRef } } }
+                },
+            };
+            var moduleBBom = new Bom
+            {
+                Metadata = new Metadata { Component = new Component { Name = "moduleB" } },
+                Components = new List<Component>
+                {
+                    new Component { Name = "jackson", Version = "1.0.0", Purl = jackRef, BomRef = jackRef, Description = "Jackson integration helpers" }
+                },
+                Dependencies = new List<Dependency>
+                {
+                    new Dependency { Ref = "moduleB", Dependencies = new List<Dependency> { new Dependency { Ref = jackRef } } }
+                },
+            };
+
+            var result = CycloneDXUtils.FlatMerge(new List<Bom> { moduleABom, moduleBBom }, MergeStrategy.Default());
+
+            var componentRefs = new HashSet<string>();
+            foreach (var c in result.Components) componentRefs.Add(c.BomRef);
+
+            // jackson (merged into one) + moduleA's and moduleB's own
+            // Metadata.Component self-descriptions.
+            Assert.Equal(3, result.Components.Count);
+            var jackson = Assert.Single(result.Components, c => c.Name == "jackson");
+            Assert.Single(jackson.Hashes);
+            Assert.Equal("Jackson integration helpers", jackson.Description);
+
+            void AssertNoDangling(IEnumerable<Dependency> deps)
+            {
+                foreach (var d in deps)
+                {
+                    Assert.True(componentRefs.Contains(d.Ref) || d.Ref == "moduleA" || d.Ref == "moduleB",
+                        $"dependency ref '{d.Ref}' has no matching component");
+                    if (d.Dependencies != null) AssertNoDangling(d.Dependencies);
+                }
+            }
+            AssertNoDangling(result.Dependencies);
+        }
+
+        [Fact]
         public void BomRenameRef_RewritesIdentifierAndBackReferences()
         {
             var bom = new Bom
