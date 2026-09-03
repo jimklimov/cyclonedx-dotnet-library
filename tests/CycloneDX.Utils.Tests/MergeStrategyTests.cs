@@ -122,6 +122,38 @@ namespace CycloneDX.Utils.Tests
         }
 
         [Fact]
+        public void FlatMerge_WithStrategy_ReconcilesOwnMetadataComponentWithAnAlreadyMergedThinEntry()
+        {
+            // moduleA depends on moduleB, but only knows enough about it to
+            // list it as a thin, dependency-only Components entry.
+            var thinB = new Component { Name = "moduleB", Version = "1.0.0", Group = "example", Purl = "pkg:maven/example/moduleB@1.0.0" };
+            var moduleABom = new Bom
+            {
+                Metadata = new Metadata { Component = new Component { Name = "moduleA", Version = "1.0.0" } },
+                Components = new List<Component> { thinB },
+            };
+
+            // moduleB's own bom describes itself richly via Metadata.Component,
+            // with no Components list of its own.
+            var richB = new Component { Name = "moduleB", Version = "1.0.0", Group = "example", Purl = "pkg:maven/example/moduleB@1.0.0", Description = "the real thing" };
+            var moduleBBom = new Bom
+            {
+                Metadata = new Metadata { Component = richB },
+            };
+
+            var result = CycloneDXUtils.FlatMerge(new List<Bom> { moduleABom, moduleBBom }, MergeStrategy.Default());
+
+            // Previously this produced two Components entries sharing the
+            // same real-world identity (and, once bom-refs were assigned,
+            // the same bom-ref) -- one thin, one rich -- instead of folding
+            // moduleB's own self-description into the already-accumulated
+            // thin stub.
+            Assert.Equal(2, result.Components.Count);
+            var mergedB = Assert.Single(result.Components, c => c.Name == "moduleB");
+            Assert.Equal("the real thing", mergedB.Description);
+        }
+
+        [Fact]
         public void BomRenameRef_RewritesIdentifierAndBackReferences()
         {
             var bom = new Bom
