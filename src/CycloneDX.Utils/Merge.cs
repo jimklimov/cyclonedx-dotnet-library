@@ -226,9 +226,31 @@ namespace CycloneDX.Utils
 
             result.Components = MergeableListHelper.Merge(bom1.Components, bom2.Components, strategy);
 
-            if (result.Components != null && !(bom2.Metadata?.Component is null) && !result.Components.Contains(bom2.Metadata.Component))
+            if (!(bom2.Metadata?.Component is null))
             {
-                result.Components.Add(bom2.Metadata.Component);
+                // bom2's own subject often also appears as some other source
+                // bom's (thin, dependency-only) entry for the same real-world
+                // package -- an exact-equality Contains() check (as the
+                // non-strategy overload above uses) would miss that and add
+                // a second, duplicate-bom-ref entry instead of folding into
+                // the existing one. Reconcile via Equivalent()/MergeWith()
+                // the same way MergeableListHelper.Merge already does for
+                // list-to-list entries.
+                var ownComponent = bom2.Metadata.Component;
+                if (result.Components is null)
+                {
+                    result.Components = new List<Component>();
+                }
+                var existing = result.Components.FirstOrDefault(c =>
+                    c.Equals(ownComponent) || c.Equivalent(ownComponent, strategy));
+                if (existing != null)
+                {
+                    existing.MergeWith(ownComponent, strategy);
+                }
+                else
+                {
+                    result.Components.Add(ownComponent);
+                }
             }
 
             result.Services = MergeableListHelper.Merge(bom1.Services, bom2.Services, strategy);
