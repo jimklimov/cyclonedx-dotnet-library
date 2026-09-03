@@ -450,7 +450,7 @@ namespace CycloneDX.Models
         /// Required/unset) and the caller should not merge these two
         /// components at all.
         /// </returns>
-        private static bool TryMergeScope(ComponentScope? a, ComponentScope? b, ComponentConflictResolution resolution, out ComponentScope? merged)
+        public static bool TryMergeScope(ComponentScope? a, ComponentScope? b, ComponentConflictResolution resolution, out ComponentScope? merged)
         {
             if (a == b)
             {
