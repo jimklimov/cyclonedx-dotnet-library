@@ -357,6 +357,156 @@ namespace CycloneDX.Models
             }
             Metadata.Timestamp = DateTime.Now;
         }
+
+        /// <summary>
+        /// Find every top-level Component (in Metadata.Component and
+        /// Components) that no dependsOn edge anywhere in the document's
+        /// Dependencies tree ever targets. These are structurally valid
+        /// per the JSON/XML schema, but invisible to any consumer that
+        /// walks the dependency graph from the document's subject rather
+        /// than scanning the flat Components list (e.g. Dependency-Track).
+        /// A flat merge of many independently-generated documents can
+        /// easily leave some of them like this: FlatMerge unions each
+        /// input's own Dependencies, but never guarantees the union stays
+        /// one connected graph -- that depends entirely on dependsOn edges
+        /// the inputs already had.
+        ///
+        /// Buckets whatever is found by Scope (Excluded, Optional,
+        /// Required, unspecified) and gives each non-empty bucket its own
+        /// synthetic "attachment" Component, wired into the dependency
+        /// graph as a child of the existing dependency-list entry named by
+        /// <paramref name="attachmentRef"/> (or this document's own
+        /// subject, Metadata.Component.BomRef, if
+        /// <paramref name="attachmentRef"/> is null or doesn't identify an
+        /// existing entry).
+        /// </summary>
+        /// <returns>
+        /// The bom-refs of newly-created attachment Components, each
+        /// mapped to the dangling bom-refs attached under it. Empty if
+        /// none were found, or if there was no subject to attach under.
+        /// </returns>
+        public Dictionary<string, List<string>> AttachDanglingComponents(string attachmentRef = null)
+        {
+            var known = new Dictionary<string, Component>();
+            if (Metadata?.Component != null && !string.IsNullOrEmpty(Metadata.Component.BomRef))
+            {
+                known[Metadata.Component.BomRef] = Metadata.Component;
+            }
+            if (Components != null)
+            {
+                foreach (var c in Components)
+                {
+                    if (!string.IsNullOrEmpty(c.BomRef))
+                    {
+                        known[c.BomRef] = c;
+                    }
+                }
+            }
+
+            var referenced = new HashSet<string>();
+            void WalkReferenced(List<Dependency> deps, bool isTopLevel)
+            {
+                if (deps is null)
+                {
+                    return;
+                }
+                foreach (var d in deps)
+                {
+                    if (!isTopLevel && !string.IsNullOrEmpty(d.Ref))
+                    {
+                        referenced.Add(d.Ref);
+                    }
+                    WalkReferenced(d.Dependencies, false);
+                }
+            }
+            WalkReferenced(Dependencies, true);
+
+            var rootRef = Metadata?.Component?.BomRef;
+            var dangling = new Dictionary<string, List<string>>();
+            foreach (var kvp in known)
+            {
+                if (kvp.Key == rootRef || referenced.Contains(kvp.Key))
+                {
+                    continue;
+                }
+                var scopeLabel = kvp.Value.Scope?.ToString() ?? "Unspecified";
+                if (!dangling.TryGetValue(scopeLabel, out var list))
+                {
+                    list = new List<string>();
+                    dangling[scopeLabel] = list;
+                }
+                list.Add(kvp.Key);
+            }
+
+            var result = new Dictionary<string, List<string>>();
+            if (dangling.Count == 0)
+            {
+                return result;
+            }
+
+            if (Dependencies is null)
+            {
+                Dependencies = new List<Dependency>();
+            }
+
+            var attachmentEntry = string.IsNullOrEmpty(attachmentRef)
+                ? null
+                : Dependencies.FirstOrDefault(d => d.Ref == attachmentRef);
+            if (attachmentEntry is null)
+            {
+                attachmentEntry = string.IsNullOrEmpty(rootRef)
+                    ? null
+                    : Dependencies.FirstOrDefault(d => d.Ref == rootRef);
+                if (attachmentEntry is null && !string.IsNullOrEmpty(rootRef))
+                {
+                    attachmentEntry = new Dependency { Ref = rootRef };
+                    Dependencies.Add(attachmentEntry);
+                }
+            }
+            if (attachmentEntry is null)
+            {
+                // No subject at all to attach under -- nothing safe to do.
+                return result;
+            }
+            attachmentEntry.Dependencies ??= new List<Dependency>();
+
+            if (Components is null)
+            {
+                Components = new List<Component>();
+            }
+
+            var usedRefs = new HashSet<string>(known.Keys);
+            foreach (var kvp in dangling)
+            {
+                var scopeLabel = kvp.Key;
+                var baseRef = $"unreferenced-components:scope={scopeLabel}";
+                var newRef = baseRef;
+                var suffix = 2;
+                while (usedRefs.Contains(newRef))
+                {
+                    newRef = $"{baseRef}:{suffix}";
+                    suffix++;
+                }
+                usedRefs.Add(newRef);
+
+                Components.Add(new Component
+                {
+                    BomRef = newRef,
+                    Type = Component.Classification.Application,
+                    Name = $"unreferenced-components (scope={scopeLabel})",
+                });
+                Dependencies.Add(new Dependency
+                {
+                    Ref = newRef,
+                    Dependencies = kvp.Value.Select(r => new Dependency { Ref = r }).ToList(),
+                });
+                attachmentEntry.Dependencies.Add(new Dependency { Ref = newRef });
+
+                result[newRef] = kvp.Value;
+            }
+
+            return result;
+        }
 #endif
     }
 }
