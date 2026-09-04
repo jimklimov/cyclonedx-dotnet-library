@@ -445,6 +445,116 @@ namespace CycloneDX.Utils.Tests
             Assert.NotNull(result.Services);
             Assert.Single(result.Services);
         }
+
+        [Fact]
+        public void AttachDanglingComponents_BucketsByScopeAndAttachesUnderRoot()
+        {
+            var bom = new Bom
+            {
+                Metadata = new Metadata { Component = new Component { Name = "root-app", BomRef = "root" } },
+                Components = new List<Component>
+                {
+                    new Component { Name = "req-lib", BomRef = "req-lib", Scope = Component.ComponentScope.Required },
+                    new Component { Name = "opt-lib", BomRef = "opt-lib", Scope = Component.ComponentScope.Optional },
+                    new Component { Name = "linked-lib", BomRef = "linked-lib", Scope = Component.ComponentScope.Required },
+                },
+                Dependencies = new List<Dependency>
+                {
+                    new Dependency { Ref = "root", Dependencies = new List<Dependency> { new Dependency { Ref = "linked-lib" } } },
+                },
+            };
+
+            var attached = bom.AttachDanglingComponents();
+
+            Assert.Equal(2, attached.Count);
+            var requiredBucket = Assert.Single(attached, kv => kv.Key.Contains("scope=Required")).Value;
+            Assert.Equal(new List<string> { "req-lib" }, requiredBucket);
+            var optionalBucket = Assert.Single(attached, kv => kv.Key.Contains("scope=Optional")).Value;
+            Assert.Equal(new List<string> { "opt-lib" }, optionalBucket);
+
+            // linked-lib was already reachable -- not touched.
+            var rootEntry = Assert.Single(bom.Dependencies, d => d.Ref == "root");
+            Assert.Equal(3, rootEntry.Dependencies.Count); // linked-lib + 2 new buckets
+            Assert.Contains(rootEntry.Dependencies, d => d.Ref == "linked-lib");
+        }
+
+        [Fact]
+        public void AttachDanglingComponents_AttachesUnderExplicitRefWhenPresent()
+        {
+            var bom = new Bom
+            {
+                Metadata = new Metadata { Component = new Component { Name = "root-app", BomRef = "root" } },
+                Components = new List<Component>
+                {
+                    new Component { Name = "orphan", BomRef = "orphan", Scope = Component.ComponentScope.Required },
+                    new Component { Name = "grouping", BomRef = "grouping" },
+                },
+                Dependencies = new List<Dependency>
+                {
+                    new Dependency { Ref = "root", Dependencies = new List<Dependency> { new Dependency { Ref = "grouping" } } },
+                    new Dependency { Ref = "grouping", Dependencies = new List<Dependency>() },
+                },
+            };
+
+            bom.AttachDanglingComponents("grouping");
+
+            var groupingEntry = Assert.Single(bom.Dependencies, d => d.Ref == "grouping");
+            Assert.Single(groupingEntry.Dependencies);
+            var rootEntry = Assert.Single(bom.Dependencies, d => d.Ref == "root");
+            Assert.Single(rootEntry.Dependencies); // unchanged -- attachment went under "grouping"
+        }
+
+        [Fact]
+        public void AttachDanglingComponents_FallsBackToRoot_WhenExplicitRefNotFound()
+        {
+            var bom = new Bom
+            {
+                Metadata = new Metadata { Component = new Component { Name = "root-app", BomRef = "root" } },
+                Components = new List<Component> { new Component { Name = "orphan", BomRef = "orphan" } },
+                Dependencies = new List<Dependency> { new Dependency { Ref = "root" } },
+            };
+
+            bom.AttachDanglingComponents("does-not-exist");
+
+            var rootEntry = Assert.Single(bom.Dependencies, d => d.Ref == "root");
+            Assert.Single(rootEntry.Dependencies);
+        }
+
+        [Fact]
+        public void AttachDanglingComponents_NoOp_WhenNothingIsDangling()
+        {
+            var bom = new Bom
+            {
+                Metadata = new Metadata { Component = new Component { Name = "root-app", BomRef = "root" } },
+                Components = new List<Component> { new Component { Name = "linked-lib", BomRef = "linked-lib" } },
+                Dependencies = new List<Dependency>
+                {
+                    new Dependency { Ref = "root", Dependencies = new List<Dependency> { new Dependency { Ref = "linked-lib" } } },
+                },
+            };
+
+            var attached = bom.AttachDanglingComponents();
+
+            Assert.Empty(attached);
+            Assert.Single(bom.Components);
+        }
+
+        [Fact]
+        public void AttachDanglingComponents_IsIdempotent()
+        {
+            var bom = new Bom
+            {
+                Metadata = new Metadata { Component = new Component { Name = "root-app", BomRef = "root" } },
+                Components = new List<Component> { new Component { Name = "orphan", BomRef = "orphan" } },
+                Dependencies = new List<Dependency> { new Dependency { Ref = "root" } },
+            };
+
+            var firstPass = bom.AttachDanglingComponents();
+            var secondPass = bom.AttachDanglingComponents();
+
+            Assert.Single(firstPass);
+            Assert.Empty(secondPass);
+        }
     }
 }
 #endif
