@@ -113,6 +113,27 @@ gated and absent from that target, unchanged from before):
   `Components` list — a real spec violation two separate merge inputs can
   produce) and `CleanupEmptyLists` (drops now-empty top-level lists rather
   than serializing them).
+- `CycloneDXUtils.CleanupEmptyListsDeep(Bom)`, also in `Merge.cs`: unlike
+  `CleanupEmptyLists` (top-level `Bom` lists only), this reflects over the
+  entire object graph and nulls out any non-null, zero-count list property
+  that's actually JSON-serialized (skipping `[JsonIgnore]` members, e.g.
+  the Protobuf-only `*_Protobuf` mirror properties, which must not be
+  touched here). Added because `BomUtils.GetBomForSerialization` only
+  copies+downgrades a BOM when its `SpecVersion` differs from
+  `SpecificationVersionHelpers.CurrentVersion`; for the current version it
+  serializes the object graph as-is, so empty lists like a Component's
+  `"licenses": []` or a Dependency's `"dependsOn": []`/`"provides": []`
+  survive untouched — whereas for every *other* target version, the
+  Protobuf round-trip `CopyBomAndDowngrade` uses as its deep-copy mechanism
+  already collapses those to `null` as an (undocumented) side effect of
+  proto3's inability to distinguish an empty repeated field from an absent
+  one. `CleanupEmptyListsDeep` makes that omission consistent and
+  intentional across all spec versions instead of being an accident of the
+  downgrade path. Not required for schema validity in any spec version
+  1.4–1.7 (verified against the bundled schemas: none of these list
+  properties are `required` or carry `minItems`) — purely cosmetic.
+  Wired up in `cyclonedx-cli` behind `--strip-empty-lists` on `convert` and
+  `merge` (see `../cyclonedx-cli/README-privateBuild.md`).
 
 **Fixed after initial review** (a second pass caught real behavior
 differences from the old fork, not just missing features — worth reading
