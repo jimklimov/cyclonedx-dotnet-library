@@ -655,6 +655,77 @@ namespace CycloneDX.Utils
 
             return result;
         }
+
+        /// <summary>
+        /// Recursively replaces empty (non-null, zero-count) list properties
+        /// anywhere in the BOM's object graph with null, so a serialized
+        /// document doesn't carry redundant entries like a Component's
+        /// "licenses": [], a Dependency's "dependsOn": [] / "provides": [],
+        /// or a Pedigree's "variants": [] -- not just the top-level lists
+        /// handled by <see cref="CleanupEmptyLists"/>.
+        ///
+        /// Only properties that are actually written to JSON are touched:
+        /// members decorated with [JsonIgnore] (e.g. the Protobuf-only
+        /// mirror properties such as Dependency.Provides_Protobuf) are
+        /// skipped, since nulling those has side effects on the property
+        /// they mirror and serves no purpose for JSON output.
+        /// </summary>
+        public static Bom CleanupEmptyListsDeep(Bom bom)
+        {
+            if (bom != null)
+            {
+                PruneEmptyLists(bom, new HashSet<object>(ReferenceComparer.Instance));
+            }
+            return bom;
+        }
+
+        private static void PruneEmptyLists(object obj, HashSet<object> visited)
+        {
+            if (obj is null || obj is string || obj is byte[]) return;
+
+            var type = obj.GetType();
+            if (type.IsPrimitive || type.IsEnum) return;
+            if (type.Namespace is null || !type.Namespace.StartsWith("CycloneDX", StringComparison.Ordinal)) return;
+            if (!visited.Add(obj)) return;
+
+            foreach (var prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+            {
+                if (!prop.CanRead || prop.GetIndexParameters().Length > 0) continue;
+                if (Attribute.IsDefined(prop, typeof(System.Text.Json.Serialization.JsonIgnoreAttribute))) continue;
+
+                object value;
+                try { value = prop.GetValue(obj); }
+                catch { continue; }
+                if (value is null || value is string || value is byte[]) continue;
+
+                if (value is System.Collections.IEnumerable enumerable)
+                {
+                    foreach (var item in enumerable)
+                    {
+                        PruneEmptyLists(item, visited);
+                    }
+
+                    if (value is System.Collections.ICollection collection
+                        && collection.Count == 0
+                        && prop.CanWrite && prop.SetMethod != null && prop.SetMethod.IsPublic)
+                    {
+                        try { prop.SetValue(obj, null); }
+                        catch { /* best-effort cleanup, skip properties that reject null */ }
+                    }
+                }
+                else
+                {
+                    PruneEmptyLists(value, visited);
+                }
+            }
+        }
+
+        private sealed class ReferenceComparer : IEqualityComparer<object>
+        {
+            public static readonly ReferenceComparer Instance = new ReferenceComparer();
+            public new bool Equals(object x, object y) => ReferenceEquals(x, y);
+            public int GetHashCode(object obj) => System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj);
+        }
 #endif
 
         /// <summary>

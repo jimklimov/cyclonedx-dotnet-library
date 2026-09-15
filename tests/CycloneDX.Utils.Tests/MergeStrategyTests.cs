@@ -447,6 +447,47 @@ namespace CycloneDX.Utils.Tests
         }
 
         [Fact]
+        public void CleanupEmptyListsDeep_PrunesNestedEmptyListsButKeepsNonEmptyOnes()
+        {
+            var component = new Component
+            {
+                Type = Component.Classification.Library,
+                BomRef = "comp-a",
+                Name = "comp-a",
+                Licenses = new List<LicenseChoice>(),
+                Properties = new List<Property> { new Property { Name = "k", Value = "v" } },
+                Pedigree = new Pedigree
+                {
+                    Variants = new List<Component>(),
+                },
+            };
+            var dependency = new Dependency
+            {
+                Ref = "comp-a",
+                Dependencies = new List<Dependency>(),
+                Provides = new List<Provides>(),
+            };
+            var bom = new Bom
+            {
+                Components = new List<Component> { component },
+                Dependencies = new List<Dependency> { dependency },
+            };
+
+            var result = CycloneDXUtils.CleanupEmptyListsDeep(bom);
+
+            Assert.Null(component.Licenses);
+            Assert.Null(component.Pedigree.Variants);
+            Assert.Null(dependency.Dependencies);
+            Assert.Null(dependency.Provides);
+            // Non-empty nested lists must survive untouched.
+            Assert.NotNull(component.Properties);
+            Assert.Single(component.Properties);
+            // Top-level Bom.Components/Dependencies are non-empty, so they survive too.
+            Assert.NotNull(result.Components);
+            Assert.NotNull(result.Dependencies);
+        }
+
+        [Fact]
         public void AttachDanglingComponents_BucketsByScopeAndAttachesUnderRoot()
         {
             var bom = new Bom
