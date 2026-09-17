@@ -255,11 +255,9 @@ namespace CycloneDX.Utils
 
             result.Services = MergeableListHelper.Merge(bom1.Services, bom2.Services, strategy);
             result.ExternalReferences = MergeableListHelper.Merge(bom1.ExternalReferences, bom2.ExternalReferences, strategy);
-            // Dependency reconciliation beyond exact-match (e.g. treating one
-            // side's dependency list as a subset of the other's, per
-            // strategy.MergeSubsetDependencies) is not yet implemented --
-            // Dependency currently only merges via its IMergeable<T> default
-            // (exact equality), same as the non-strategy overload.
+            // Dependency.MergeWith reconciles beyond exact-match: two entries
+            // for the same Ref have their (sub-)dependency lists unioned,
+            // gated by strategy.MergeSubsetDependencies (see Dependency.cs).
             result.Dependencies = MergeableListHelper.Merge(bom1.Dependencies, bom2.Dependencies, strategy);
             result.Compositions = MergeableListHelper.Merge(bom1.Compositions, bom2.Compositions, strategy);
             result.Vulnerabilities = MergeableListHelper.Merge(bom1.Vulnerabilities, bom2.Vulnerabilities, strategy);
