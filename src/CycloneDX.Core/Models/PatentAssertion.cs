@@ -53,6 +53,17 @@ namespace CycloneDX.Models
         [ProtoMember(5)]
         public string Notes { get; set; }
 
+        public override bool Equals(object obj)
+        {
+            var other = obj as PatentAssertion;
+            if (other == null)
+            {
+                return false;
+            }
+
+            return JsonSerializer.Serialize(this, Json.Serializer.SerializerOptionsForHash) == JsonSerializer.Serialize(other, Json.Serializer.SerializerOptionsForHash);
+        }
+
         public bool Equals(PatentAssertion obj)
         {
             return obj != null && JsonSerializer.Serialize(this, Json.Serializer.SerializerOptionsForHash) == JsonSerializer.Serialize(obj, Json.Serializer.SerializerOptionsForHash);

@@ -37,6 +37,17 @@ namespace CycloneDX.Models
         [ProtoMember(2)]
         public string Value { get; set; }
 
+        public override bool Equals(object obj)
+        {
+            var other = obj as Property;
+            if (other == null)
+            {
+                return false;
+            }
+
+            return JsonSerializer.Serialize(this, Json.Serializer.SerializerOptionsForHash) == JsonSerializer.Serialize(other, Json.Serializer.SerializerOptionsForHash);
+        }
+
         public bool Equals(Property obj)
         {
             return obj != null && JsonSerializer.Serialize(this, Json.Serializer.SerializerOptionsForHash) == JsonSerializer.Serialize(obj, Json.Serializer.SerializerOptionsForHash);
